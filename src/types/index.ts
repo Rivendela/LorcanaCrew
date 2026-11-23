@@ -104,9 +104,45 @@ export interface PlayerStanding {
   recentForm: ('W' | 'D' | 'L')[];
 }
 
+export type TournamentStatus = 'draft' | 'active' | 'completed';
+export type TournamentFormat = 'porcana' | 'core' | 'infiniti';
+
+export interface TournamentMatch {
+  id: string;
+  roundName: string; // 'Cuartos de Final', 'Semifinal', 'Gran Final', 'Tercer Puesto'
+  roundLevel: number; // 1 = Primera ronda, 2 = Semis, 3 = Final
+  matchIndex: number;
+  nextMatchId?: string;
+  nextMatchSlot?: 1 | 2;
+  player1Id: string | null;
+  player2Id: string | null;
+  player1Score: number;
+  player2Score: number;
+  winnerId: string | null;
+  status: 'pending' | 'completed';
+  notes?: string;
+  playedAt?: string;
+}
+
+export interface Tournament {
+  id: string;
+  name: string;
+  description?: string;
+  format: TournamentFormat;
+  date: string;
+  status: TournamentStatus;
+  playerIds: string[];
+  matches: TournamentMatch[];
+  championId?: string | null;
+  runnerUpId?: string | null;
+  thirdPlaceId?: string | null;
+  createdAt: string;
+}
+
 export interface DatabaseSchema {
   users: User[];
   leagues: League[];
   rounds: Round[];
   matches: Match[];
+  tournaments?: Tournament[];
 }

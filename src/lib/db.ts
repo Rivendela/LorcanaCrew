@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { DatabaseSchema, League, Match, Round, User } from '@/types';
+import { DatabaseSchema, League, Match, Round, Tournament, User } from '@/types';
 import { generateRoundRobinSchedule } from './league-engine';
 
 const isVercel = !!process.env.VERCEL;
@@ -50,6 +50,7 @@ function getInitialSeedData(): DatabaseSchema {
     leagues: [],
     rounds: [],
     matches: [],
+    tournaments: [],
   };
 }
 
@@ -86,7 +87,6 @@ async function saveToCloudKV(data: DatabaseSchema): Promise<boolean> {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(data),
-      cache: 'no-store',
     });
     return res.ok;
   } catch (err) {
@@ -135,7 +135,16 @@ function getLocalOrSeedData(): DatabaseSchema {
 export async function getDatabase(): Promise<DatabaseSchema> {
   ensureDirectoryExists();
 
-  // 1. If Cloud KV (Vercel KV / Upstash) is configured:
+  const isBuildTime =
+    process.env.NEXT_PHASE === 'phase-production-build' ||
+    process.env.npm_lifecycle_event === 'build';
+
+  // During Next.js build / static optimization, use local seed data to avoid dynamic server bailouts
+  if (isBuildTime) {
+    return getLocalOrSeedData();
+  }
+
+  // 1. If Cloud KV (Vercel KV / Upstash) is configured at runtime:
   if (KV_URL && KV_TOKEN) {
     if (cachedDb && Date.now() - lastCloudFetchTime < CLOUD_CACHE_TTL_MS) {
       return cachedDb;
@@ -405,6 +414,47 @@ export async function resetCurrentLeague(): Promise<boolean> {
   db.matches = [];
   await saveDatabase(db);
   return true;
+}
+
+// Tournament System (Independent of regular league)
+export async function getTournaments(): Promise<Tournament[]> {
+  const db = await getDatabase();
+  return db.tournaments || [];
+}
+
+export async function getTournamentById(id: string): Promise<Tournament | undefined> {
+  const tournaments = await getTournaments();
+  return tournaments.find((t) => t.id === id);
+}
+
+export async function createTournament(tournament: Tournament): Promise<Tournament> {
+  const db = await getDatabase();
+  if (!db.tournaments) db.tournaments = [];
+  db.tournaments.push(tournament);
+  await saveDatabase(db);
+  return tournament;
+}
+
+export async function updateTournament(id: string, updates: Partial<Tournament>): Promise<Tournament | null> {
+  const db = await getDatabase();
+  if (!db.tournaments) db.tournaments = [];
+  const idx = db.tournaments.findIndex((t) => t.id === id);
+  if (idx === -1) return null;
+  db.tournaments[idx] = { ...db.tournaments[idx], ...updates };
+  await saveDatabase(db);
+  return db.tournaments[idx];
+}
+
+export async function deleteTournament(id: string): Promise<boolean> {
+  const db = await getDatabase();
+  if (!db.tournaments) return false;
+  const initialLen = db.tournaments.length;
+  db.tournaments = db.tournaments.filter((t) => t.id !== id);
+  if (db.tournaments.length !== initialLen) {
+    await saveDatabase(db);
+    return true;
+  }
+  return false;
 }
 
 // Backup system

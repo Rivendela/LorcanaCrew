@@ -1,9 +1,11 @@
 import React from 'react';
 import { getCurrentUser } from '@/lib/auth';
-import { getActiveLeague, getMatches, getRounds, getUsers } from '@/lib/db';
+import { getActiveLeague, getMatches, getRounds, getTournaments, getUsers } from '@/lib/db';
 import { AdminClient } from './AdminClient';
 import Link from 'next/link';
 import { ShieldAlert } from 'lucide-react';
+
+export const dynamic = 'force-dynamic';
 
 export default async function AdminPage() {
   const session = await getCurrentUser();
@@ -31,13 +33,16 @@ export default async function AdminPage() {
   const players = allUsers.filter((u) => u.role === 'player');
   const rounds = league ? await getRounds(league.id) : [];
   const matches = league ? await getMatches(league.id) : [];
+  const tournaments = await getTournaments();
 
   return (
     <AdminClient
       league={league}
       players={players}
+      allUsers={allUsers}
       rounds={rounds}
       matches={matches}
+      tournaments={tournaments}
       adminUser={session}
     />
   );

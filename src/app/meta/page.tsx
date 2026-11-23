@@ -4,6 +4,8 @@ import { MetaStatsView } from '@/components/MetaStatsView';
 import { BarChart3 } from 'lucide-react';
 import Link from 'next/link';
 
+export const dynamic = 'force-dynamic';
+
 export default async function MetaPage() {
   const league = await getActiveLeague();
   const allUsers = await getUsers();

@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Trophy, Calendar, Users, BarChart3, Shield, LogIn, LogOut, Sparkles, User } from 'lucide-react';
+import { Trophy, Calendar, Users, BarChart3, Shield, LogIn, LogOut, Sparkles, User, Swords } from 'lucide-react';
 import { AvatarBadge } from './AvatarBadge';
 
 interface UserState {
@@ -44,6 +44,7 @@ export function Navbar() {
     { href: '/jornadas', label: 'Jornadas & Bo3', icon: Calendar },
     { href: '/jugadores', label: 'Jugadores', icon: Users },
     { href: '/meta', label: 'Meta de Tintas', icon: BarChart3 },
+    { href: '/torneos', label: 'Torneos', icon: Swords },
     ...(user ? [{ href: '/perfil', label: 'Mi Perfil', icon: User }] : []),
     ...(user?.role === 'admin' ? [{ href: '/admin', label: 'Comisionado', icon: Shield }] : []),
   ];

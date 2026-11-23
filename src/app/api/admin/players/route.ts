@@ -53,7 +53,7 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ error: 'Acceso no autorizado' }, { status: 403 });
     }
 
-    const { id, name, username, avatar, primaryInk, secondaryInk, newPassword } = await req.json();
+    const { id, name, username, avatar, primaryInk, secondaryInk, inksVisibility, bio, favoriteCard, newPassword } = await req.json();
 
     if (!id) {
       return NextResponse.json({ error: 'ID de jugador requerido' }, { status: 400 });
@@ -65,6 +65,11 @@ export async function PUT(req: NextRequest) {
     if (avatar) updates.avatar = avatar;
     if (primaryInk) updates.primaryInk = primaryInk;
     if (secondaryInk) updates.secondaryInk = secondaryInk;
+    if (inksVisibility === 'public' || inksVisibility === 'private') {
+      updates.inksVisibility = inksVisibility;
+    }
+    if (bio !== undefined) updates.bio = bio.trim();
+    if (favoriteCard !== undefined) updates.favoriteCard = favoriteCard.trim();
 
     if (newPassword && newPassword.trim()) {
       updates.passwordHash = await hashPassword(newPassword.trim());

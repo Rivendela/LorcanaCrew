@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { BackupInfo, InkType, League, LeagueFormat, Match, Round, User } from '@/types';
+import { BackupInfo, InkType, League, LeagueFormat, Match, Round, Tournament, TournamentFormat, TournamentMatch, User } from '@/types';
 import { ALL_INKS, LORCANA_AVATARS, LORCANA_FORMATS, LORCANA_INKS } from '@/lib/constants';
 import {
   Shield,
@@ -23,28 +23,37 @@ import {
   Swords,
   X,
   Lock,
+  Trophy,
+  Crown,
+  Eye,
+  Award,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { AvatarBadge } from '@/components/AvatarBadge';
 import { DualInkBadge } from '@/components/InkBadge';
+import { TournamentBracket } from '@/components/TournamentBracket';
 
 interface AdminClientProps {
   league?: League;
   players: User[];
+  allUsers?: User[];
   rounds: Round[];
   matches: Match[];
-  adminUser: { userId: string; username: string; name: string };
+  tournaments?: Tournament[];
+  adminUser: { id?: string; userId?: string; username: string; name: string };
 }
 
 export function AdminClient({
   league,
   players,
+  allUsers,
   rounds,
   matches,
+  tournaments,
   adminUser,
 }: AdminClientProps) {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<'league' | 'rounds' | 'players' | 'backups'>('rounds');
+  const [activeTab, setActiveTab] = useState<'rounds' | 'players' | 'tournaments' | 'league' | 'backups'>('rounds');
 
   // Season / League state
   const [leagueName, setLeagueName] = useState(league?.name || 'CCREW - Caldereta Crew');
@@ -72,7 +81,28 @@ export function AdminClient({
     avatar: 'mickey',
     primaryInk: 'Amber' as InkType,
     secondaryInk: 'Steel' as InkType,
+    inksVisibility: 'public' as 'public' | 'private',
+    favoriteCard: '',
+    bio: '',
   });
+
+  // Tournament Management State
+  const tournamentList = tournaments || [];
+  const activeTournament = tournamentList.find((t) => t.status === 'active') || null;
+  const pastTournaments = tournamentList.filter((t) => t.status === 'completed');
+
+  const [isCreatingTournament, setIsCreatingTournament] = useState(false);
+  const [tName, setTName] = useState('I Copa Caldereta Lorcana');
+  const [tFormat, setTFormat] = useState<TournamentFormat>('porcana');
+  const [tDate, setTDate] = useState(new Date().toISOString().split('T')[0]);
+  const [tDescription, setTDescription] = useState('Torneo eliminatorio directo Bo3');
+  const [tSelectedPlayers, setTSelectedPlayers] = useState<string[]>(players.map((p) => p.id));
+
+  // Tournament Match Scoring Modal
+  const [tScoringMatch, setTScoringMatch] = useState<{ match: TournamentMatch; tournamentId: string } | null>(null);
+  const [tScore1, setTScore1] = useState(2);
+  const [tScore2, setTScore2] = useState(0);
+  const [tMatchNotes, setTMatchNotes] = useState('');
 
   // Match Fix Modal State
   const [editingMatch, setEditingMatch] = useState<Match | null>(null);
@@ -306,6 +336,9 @@ export function AdminClient({
             avatar: playerForm.avatar,
             primaryInk: playerForm.primaryInk,
             secondaryInk: playerForm.secondaryInk,
+            inksVisibility: playerForm.inksVisibility,
+            favoriteCard: playerForm.favoriteCard,
+            bio: playerForm.bio,
             newPassword: playerForm.password,
           }),
         });
@@ -326,7 +359,7 @@ export function AdminClient({
 
   // 8. Delete Player
   const handleDeletePlayer = async (p: User) => {
-    if (!confirm(`¿Eliminar al jugador ${p.name}? Se quitará de la lista.`)) return;
+    if (!confirm(`¿Estás seguro de que deseas eliminar permanentemente al jugador "${p.name}" (@${p.username})?`)) return;
 
     try {
       const res = await fetch('/api/admin/players', {
@@ -338,9 +371,103 @@ export function AdminClient({
       if (!res.ok) throw new Error(data.error);
 
       setMessage({ type: 'success', text: `Jugador ${p.name} eliminado.` });
+      if (editingPlayer?.id === p.id) {
+        setEditingPlayer(null);
+      }
       router.refresh();
     } catch (err: any) {
       setMessage({ type: 'error', text: err.message });
+    }
+  };
+
+  // 8.1. Tournament Handlers
+  const handleCreateTournament = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (tSelectedPlayers.length < 2) {
+      setMessage({ type: 'error', text: 'Selecciona al menos 2 jugadores para el torneo.' });
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await fetch('/api/tournaments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: tName,
+          format: tFormat,
+          date: tDate,
+          description: tDescription,
+          playerIds: tSelectedPlayers,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+
+      setMessage({ type: 'success', text: `¡Torneo "${tName}" creado y cuadro generado con éxito!` });
+      setIsCreatingTournament(false);
+      router.refresh();
+    } catch (err: any) {
+      setMessage({ type: 'error', text: err.message });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteTournament = async (tId: string, name: string) => {
+    if (!confirm(`¿Eliminar el torneo "${name}"? Se borrarán sus emparejamientos y resultados.`)) return;
+    setLoading(true);
+    try {
+      const res = await fetch('/api/tournaments', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: tId }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+
+      setMessage({ type: 'success', text: 'Torneo eliminado.' });
+      router.refresh();
+    } catch (err: any) {
+      setMessage({ type: 'error', text: err.message });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSaveTournamentScore = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!tScoringMatch) return;
+    if (tScore1 === tScore2) {
+      setMessage({ type: 'error', text: 'En eliminatorias Bo3 debe haber un ganador (sin empates).' });
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await fetch('/api/tournaments/match', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tournamentId: tScoringMatch.tournamentId,
+          matchId: tScoringMatch.match.id,
+          player1Score: tScore1,
+          player2Score: tScore2,
+          notes: tMatchNotes,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+
+      if (data.isFinished) {
+        setMessage({ type: 'success', text: '¡Torneo completado y Campeón coronado! Ha pasado al Palmarés.' });
+      } else {
+        setMessage({ type: 'success', text: 'Resultado registrado y ganador avanzado en el cuadro.' });
+      }
+      setTScoringMatch(null);
+      router.refresh();
+    } catch (err: any) {
+      setMessage({ type: 'error', text: err.message });
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -449,6 +576,18 @@ export function AdminClient({
         >
           <Users className="w-4 h-4" />
           <span>Gestión de Jugadores ({players.length})</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('tournaments')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all shrink-0 ${
+            activeTab === 'tournaments'
+              ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20 scale-[1.02]'
+              : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+          }`}
+        >
+          <Trophy className="w-4 h-4" />
+          <span>Torneos CCREW ({tournamentList.length})</span>
         </button>
 
         <button
@@ -664,6 +803,9 @@ export function AdminClient({
                   avatar: 'mickey',
                   primaryInk: 'Amber',
                   secondaryInk: 'Steel',
+                  inksVisibility: 'public',
+                  favoriteCard: '',
+                  bio: '',
                 });
               }}
               className="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-950 bg-gradient-to-r from-amber-400 to-amber-300 hover:from-amber-300 hover:to-amber-200 transition-all shadow-md shadow-amber-500/20 flex items-center gap-2"
@@ -684,9 +826,17 @@ export function AdminClient({
                   <div className="min-w-0 flex-1">
                     <p className="font-bold text-slate-200 text-sm truncate">{p.name}</p>
                     <p className="text-xs text-slate-500 truncate">@{p.username}</p>
-                    <div className="mt-1">
-                      <DualInkBadge primary={p.primaryInk} secondary={p.secondaryInk} size="sm" />
+                    <div className="mt-1 flex items-center gap-1.5 flex-wrap">
+                      <DualInkBadge primary={p.primaryInk} secondary={p.secondaryInk} size="sm" isOwnerOrAdmin={true} />
+                      <span className="text-[10px] text-slate-400 font-mono">
+                        {p.inksVisibility === 'private' ? '🔒 Oculto' : '🌐 Público'}
+                      </span>
                     </div>
+                    {p.favoriteCard && (
+                      <p className="text-[10px] text-amber-400/90 truncate mt-0.5">
+                        ✨ {p.favoriteCard}
+                      </p>
+                    )}
                   </div>
                 </div>
 
@@ -702,10 +852,13 @@ export function AdminClient({
                         avatar: p.avatar || 'mickey',
                         primaryInk: p.primaryInk || 'Amber',
                         secondaryInk: p.secondaryInk || 'Steel',
+                        inksVisibility: p.inksVisibility || 'public',
+                        favoriteCard: p.favoriteCard || '',
+                        bio: p.bio || '',
                       });
                     }}
                     className="p-2 rounded-lg text-slate-400 hover:text-amber-300 hover:bg-slate-800 transition-colors"
-                    title="Editar jugador"
+                    title="Editar información del jugador"
                   >
                     <Edit className="w-4 h-4" />
                   </button>
@@ -720,6 +873,278 @@ export function AdminClient({
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* --- TAB: GESTIÓN DE TORNEOS CCREW --- */}
+      {activeTab === 'tournaments' && (
+        <div className="space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+              <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                <Trophy className="w-5 h-5 text-amber-400" />
+                <span>Gestión de Torneos y Copas CCREW</span>
+              </h2>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Crea torneos eliminatorios independientes de la liga semanal. Registra marcadores Bo3 y corona campeones.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setIsCreatingTournament(!isCreatingTournament)}
+                className="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-950 bg-gradient-to-r from-amber-400 to-amber-300 hover:from-amber-300 hover:to-amber-200 transition-all shadow-md shadow-amber-500/20 flex items-center gap-1.5"
+              >
+                <Swords className="w-4 h-4" />
+                <span>{isCreatingTournament ? 'Ocultar Formulario' : 'Crear Nuevo Torneo'}</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Create Tournament Form */}
+          {isCreatingTournament && (
+            <div className="bg-slate-900/90 border border-amber-500/30 rounded-3xl p-6 sm:p-8 shadow-2xl animate-in fade-in duration-200">
+              <h3 className="text-base font-bold text-white mb-2 flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-amber-400" />
+                <span>Configurar Nuevo Torneo Eliminatorio</span>
+              </h3>
+              <p className="text-xs text-slate-400 mb-6">
+                Elige el formato y a los participantes. Se generará automáticamente el árbol de cruces (cuartos, semifinales y final).
+              </p>
+
+              <form onSubmit={handleCreateTournament} className="space-y-5">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-1.5 uppercase tracking-wider">
+                      Nombre del Torneo
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={tName}
+                      onChange={(e) => setTName(e.target.value)}
+                      placeholder="Ej. I Torneo del Caldero"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500/60"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-1.5 uppercase tracking-wider">
+                      Formato
+                    </label>
+                    <select
+                      value={tFormat}
+                      onChange={(e) => setTFormat(e.target.value as TournamentFormat)}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500/60"
+                    >
+                      <option value="porcana">Porcana (Especial CCREW)</option>
+                      <option value="core">Core Constructed (Oficial)</option>
+                      <option value="infiniti">Infiniti (Libre / Casual)</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-1.5 uppercase tracking-wider">
+                      Fecha del Torneo
+                    </label>
+                    <input
+                      type="date"
+                      value={tDate}
+                      onChange={(e) => setTDate(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500/60"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1.5 uppercase tracking-wider">
+                    Descripción / Detalles (Opcional)
+                  </label>
+                  <input
+                    type="text"
+                    value={tDescription}
+                    onChange={(e) => setTDescription(e.target.value)}
+                    placeholder="Ej. Torneo eliminatorio de fin de semana con premio para el campeón"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500/60"
+                  />
+                </div>
+
+                {/* Player multi-selector */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider">
+                      Participantes ({tSelectedPlayers.length} de {players.length} seleccionados)
+                    </label>
+                    <div className="flex items-center gap-2 text-xs">
+                      <button
+                        type="button"
+                        onClick={() => setTSelectedPlayers(players.map((p) => p.id))}
+                        className="text-amber-400 hover:underline"
+                      >
+                        Seleccionar todos
+                      </button>
+                      <span className="text-slate-600">•</span>
+                      <button
+                        type="button"
+                        onClick={() => setTSelectedPlayers([])}
+                        className="text-slate-400 hover:underline"
+                      >
+                        Deseleccionar todos
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5 max-h-48 overflow-y-auto p-3 bg-slate-950 rounded-2xl border border-slate-800">
+                    {players.map((p) => {
+                      const isSelected = tSelectedPlayers.includes(p.id);
+                      return (
+                        <button
+                          key={p.id}
+                          type="button"
+                          onClick={() => {
+                            setTSelectedPlayers((prev) =>
+                              prev.includes(p.id) ? prev.filter((id) => id !== p.id) : [...prev, p.id]
+                            );
+                          }}
+                          className={`p-2.5 rounded-xl border flex items-center gap-2.5 text-left transition-all ${
+                            isSelected
+                              ? 'bg-amber-500/20 border-amber-500/50 text-white'
+                              : 'bg-slate-900/60 border-slate-800 text-slate-400 hover:border-slate-700'
+                          }`}
+                        >
+                          <AvatarBadge avatarId={p.avatar} name={p.name} size="sm" />
+                          <span className="text-xs font-semibold truncate">{p.name}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsCreatingTournament(false)}
+                    className="px-4 py-2 rounded-xl text-xs text-slate-400 hover:text-white"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-amber-400 to-amber-300 hover:from-amber-300 hover:to-amber-200 text-slate-950 font-bold text-xs shadow-lg shadow-amber-500/20 transition-all disabled:opacity-50"
+                  >
+                    {loading ? 'Generando Cuadro...' : 'Generar Cuadro de Eliminatorias & Iniciar Torneo'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          )}
+
+          {/* Active Tournament */}
+          {activeTournament && (
+            <div className="bg-slate-900/70 border border-amber-500/30 rounded-3xl p-6 shadow-xl space-y-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-800">
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap mb-1">
+                    <span className="text-[10px] uppercase font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 px-2 py-0.5 rounded">
+                      ● EN DISPUTA
+                    </span>
+                    <span className="text-xs font-mono text-slate-400">
+                      {activeTournament.date}
+                    </span>
+                    <span className="text-xs font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded">
+                      {LORCANA_FORMATS[activeTournament.format]?.label || activeTournament.format}
+                    </span>
+                  </div>
+                  <h3 className="text-xl font-black text-white">{activeTournament.name}</h3>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => handleDeleteTournament(activeTournament.id, activeTournament.name)}
+                    className="px-3 py-1.5 rounded-xl text-xs font-bold text-rose-400 bg-rose-500/10 border border-rose-500/30 hover:bg-rose-500/20 transition-colors flex items-center gap-1.5"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Eliminar Torneo</span>
+                  </button>
+                </div>
+              </div>
+
+              <TournamentBracket
+                tournament={activeTournament}
+                players={players}
+                currentUser={{ id: adminUser.id || adminUser.userId || 'admin', role: 'admin' }}
+                onEditMatch={(m) => {
+                  setTScoringMatch({ match: m, tournamentId: activeTournament.id });
+                  setTScore1(m.player1Score || 2);
+                  setTScore2(m.player2Score || 0);
+                  setTMatchNotes(m.notes || '');
+                }}
+              />
+            </div>
+          )}
+
+          {/* Past Tournaments (Palmarés) in Admin */}
+          <div className="bg-slate-900/60 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-4">
+            <h3 className="text-base font-bold text-white flex items-center gap-2 border-b border-slate-800 pb-3">
+              <Crown className="w-4 h-4 text-amber-400" />
+              <span>Palmarés de Torneos Pasados ({pastTournaments.length})</span>
+            </h3>
+
+            {pastTournaments.length === 0 ? (
+              <div className="text-center py-8 text-xs text-slate-400">
+                Aún no hay torneos finalizados. Cuando un torneo concluya su Gran Final, se guardará aquí automáticamente.
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {pastTournaments.map((t) => {
+                  const champ = t.championId ? playerMap.get(t.championId) : null;
+                  const runner = t.runnerUpId ? playerMap.get(t.runnerUpId) : null;
+
+                  return (
+                    <div
+                      key={t.id}
+                      className="p-4 rounded-2xl bg-slate-950/70 border border-slate-800 flex items-center justify-between flex-wrap gap-4"
+                    >
+                      <div>
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-[10px] uppercase font-bold text-slate-500 font-mono">
+                            {t.date}
+                          </span>
+                          <span className="text-[10px] font-bold text-amber-400">
+                            {LORCANA_FORMATS[t.format]?.label || t.format}
+                          </span>
+                        </div>
+                        <h4 className="font-bold text-white text-sm">{t.name}</h4>
+                      </div>
+
+                      <div className="flex items-center gap-4">
+                        {champ && (
+                          <div className="flex items-center gap-2 bg-amber-500/10 border border-amber-500/30 px-3 py-1.5 rounded-xl">
+                            <span>👑</span>
+                            <span className="text-xs font-bold text-amber-300">{champ.name}</span>
+                          </div>
+                        )}
+                        {runner && (
+                          <div className="text-xs text-slate-400 hidden sm:block">
+                            🥈 {runner.name}
+                          </div>
+                        )}
+
+                        <button
+                          onClick={() => handleDeleteTournament(t.id, t.name)}
+                          className="p-1.5 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+                          title="Eliminar torneo del historial"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -1173,14 +1598,161 @@ export function AdminClient({
                 </div>
               </div>
 
+              {/* Privacy Setting */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1.5">Visibilidad de Tintas</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setPlayerForm({ ...playerForm, inksVisibility: 'public' })}
+                    className={`py-2 px-3 rounded-xl border text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${
+                      playerForm.inksVisibility === 'public'
+                        ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-300'
+                        : 'bg-slate-950 border-slate-800 text-slate-400'
+                    }`}
+                  >
+                    <Eye className="w-3.5 h-3.5" />
+                    <span>Público</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPlayerForm({ ...playerForm, inksVisibility: 'private' })}
+                    className={`py-2 px-3 rounded-xl border text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${
+                      playerForm.inksVisibility === 'private'
+                        ? 'bg-amber-500/20 border-amber-500/50 text-amber-300'
+                        : 'bg-slate-950 border-slate-800 text-slate-400'
+                    }`}
+                  >
+                    <Lock className="w-3.5 h-3.5" />
+                    <span>Privado (Oculto)</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Favorite Card & Bio */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Carta Favorita de Lorcana</label>
+                <input
+                  type="text"
+                  value={playerForm.favoriteCard}
+                  onChange={(e) => setPlayerForm({ ...playerForm, favoriteCard: e.target.value })}
+                  placeholder="Ej. Elsa - Espíritu del Invierno"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Biografía / Lema</label>
+                <textarea
+                  rows={2}
+                  value={playerForm.bio}
+                  onChange={(e) => setPlayerForm({ ...playerForm, bio: e.target.value })}
+                  placeholder="Ej. Jugador de control paciente"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white resize-none"
+                />
+              </div>
+
+              <div className="flex items-center justify-between pt-2">
+                {editingPlayer ? (
+                  <button
+                    type="button"
+                    onClick={() => handleDeletePlayer(editingPlayer)}
+                    className="px-3 py-1.5 rounded-lg text-xs font-semibold text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 transition-colors flex items-center gap-1"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Eliminar Jugador</span>
+                  </button>
+                ) : <div />}
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingPlayer(null);
+                      setIsCreatingPlayer(false);
+                    }}
+                    className="px-3 py-1.5 text-xs text-slate-400 hover:text-white"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="px-5 py-2 rounded-xl font-bold text-xs text-slate-950 bg-gradient-to-r from-amber-400 to-amber-300 hover:from-amber-300 hover:to-amber-200 shadow-md"
+                  >
+                    {isCreatingPlayer ? 'Crear Jugador' : 'Guardar Cambios'}
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* --- MODAL: SCORING TOURNAMENT MATCH (ADMIN) --- */}
+      {tScoringMatch && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fade-in">
+          <div className="bg-slate-900 border border-amber-500/40 rounded-3xl max-w-md w-full p-6 shadow-2xl relative">
+            <button
+              onClick={() => setTScoringMatch(null)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-white p-1 rounded-lg"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <h3 className="text-base font-bold text-white mb-1 flex items-center gap-2">
+              <Swords className="w-4 h-4 text-amber-400" />
+              <span>Anotar Resultado de Torneo</span>
+            </h3>
+            <p className="text-xs text-slate-400 mb-4">{tScoringMatch.match.roundName} (Bo3)</p>
+
+            <form onSubmit={handleSaveTournamentScore} className="space-y-4">
+              <div className="grid grid-cols-2 gap-3 text-center">
+                <div className="bg-slate-950 p-3 rounded-2xl border border-slate-800">
+                  <span className="text-xs font-semibold text-slate-300 block mb-2 truncate">
+                    {playerMap.get(tScoringMatch.match.player1Id || '')?.name || 'Jugador 1'}
+                  </span>
+                  <input
+                    type="number"
+                    min="0"
+                    max="2"
+                    value={tScore1}
+                    onChange={(e) => setTScore1(Number(e.target.value))}
+                    className="w-16 bg-slate-900 border border-slate-700 rounded-xl text-center font-mono font-black text-xl text-amber-400 p-2 mx-auto outline-none"
+                  />
+                </div>
+
+                <div className="bg-slate-950 p-3 rounded-2xl border border-slate-800">
+                  <span className="text-xs font-semibold text-slate-300 block mb-2 truncate">
+                    {playerMap.get(tScoringMatch.match.player2Id || '')?.name || 'Jugador 2'}
+                  </span>
+                  <input
+                    type="number"
+                    min="0"
+                    max="2"
+                    value={tScore2}
+                    onChange={(e) => setTScore2(Number(e.target.value))}
+                    className="w-16 bg-slate-900 border border-slate-700 rounded-xl text-center font-mono font-black text-xl text-amber-400 p-2 mx-auto outline-none"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 mb-1">Notas del partido</label>
+                <input
+                  type="text"
+                  placeholder="Ej. Final muy ajustada"
+                  value={tMatchNotes}
+                  onChange={(e) => setTMatchNotes(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-white outline-none"
+                />
+              </div>
+
               <div className="flex items-center justify-end gap-2 pt-2">
                 <button
                   type="button"
-                  onClick={() => {
-                    setEditingPlayer(null);
-                    setIsCreatingPlayer(false);
-                  }}
-                  className="px-3 py-1.5 text-xs text-slate-400 hover:text-white"
+                  onClick={() => setTScoringMatch(null)}
+                  className="px-3.5 py-2 text-xs text-slate-400 hover:text-white"
                 >
                   Cancelar
                 </button>
@@ -1189,7 +1761,7 @@ export function AdminClient({
                   disabled={loading}
                   className="px-5 py-2 rounded-xl font-bold text-xs text-slate-950 bg-gradient-to-r from-amber-400 to-amber-300 hover:from-amber-300 hover:to-amber-200 shadow-md"
                 >
-                  {isCreatingPlayer ? 'Crear Jugador' : 'Guardar Cambios'}
+                  {loading ? 'Guardando...' : 'Confirmar & Avanzar Ganador'}
                 </button>
               </div>
             </form>
