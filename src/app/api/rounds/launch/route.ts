@@ -20,8 +20,8 @@ export async function POST(req: NextRequest) {
     }
 
     return NextResponse.json({ success: true, round: updated });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Launch round error:', error);
-    return NextResponse.json({ error: 'Error al lanzar la ronda' }, { status: 500 });
+    return NextResponse.json({ error: error.message || 'Error al lanzar la ronda' }, { status: 400 });
   }
 }

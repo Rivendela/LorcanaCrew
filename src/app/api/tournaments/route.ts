@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { createTournament, deleteTournament, getTournaments, getUsers } from '@/lib/db';
-import { generateTournamentBracket } from '@/lib/tournament-engine';
-import { Tournament, TournamentFormat } from '@/types';
+import { generateSwissTournament, generateTournamentBracket } from '@/lib/tournament-engine';
+import { Tournament, TournamentFormat, TournamentType } from '@/types';
 
 export const dynamic = 'force-dynamic';
 
@@ -37,28 +37,48 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Acceso no autorizado' }, { status: 403 });
     }
 
-    const { name, format, playerIds, description, date } = await req.json();
+    const { name, format, playerIds, description, date, type, swissRoundsTotal } = await req.json();
 
     if (!name || !name.trim()) {
       return NextResponse.json({ error: 'El nombre del torneo es obligatorio' }, { status: 400 });
     }
 
-    if (!playerIds || !Array.isArray(playerIds) || playerIds.length < 2) {
-      return NextResponse.json({ error: 'Debes seleccionar al menos 2 jugadores para el torneo' }, { status: 400 });
+    const allUsers = await getUsers();
+    const nonAdminUserIds = new Set(allUsers.filter((u) => u.role === 'player').map((u) => u.id));
+    const validPlayerIds = Array.isArray(playerIds)
+      ? (playerIds as string[]).filter((id) => nonAdminUserIds.has(id))
+      : [];
+
+    if (validPlayerIds.length < 2) {
+      return NextResponse.json({ error: 'Debes seleccionar al menos 2 jugadores válidos (el administrador no puede ser jugador)' }, { status: 400 });
     }
 
     const tournamentId = `tourn-${Date.now()}`;
-    const matches = generateTournamentBracket(tournamentId, playerIds);
+    const tournamentType: TournamentType = type === 'swiss' ? 'swiss' : 'bracket';
+
+    let matches;
+    let totalSwissRounds: number | undefined = undefined;
+
+    if (tournamentType === 'swiss') {
+      const swiss = generateSwissTournament(tournamentId, validPlayerIds, swissRoundsTotal);
+      matches = swiss.matches;
+      totalSwissRounds = swiss.totalRounds;
+    } else {
+      matches = generateTournamentBracket(tournamentId, validPlayerIds);
+    }
 
     const newTournament: Tournament = {
       id: tournamentId,
       name: name.trim(),
       description: description?.trim() || `Torneo ${format?.toUpperCase() || 'LORCANA'} CCREW`,
+      type: tournamentType,
       format: (format as TournamentFormat) || 'porcana',
       date: date || new Date().toISOString().split('T')[0],
       status: 'active',
-      playerIds,
+      playerIds: validPlayerIds,
       matches,
+      swissRoundsTotal: totalSwissRounds,
+      currentSwissRound: tournamentType === 'swiss' ? 1 : undefined,
       championId: null,
       runnerUpId: null,
       thirdPlaceId: null,

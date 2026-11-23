@@ -1,4 +1,4 @@
-import { InkType, Match, PlayerStanding, Round, User } from '@/types';
+import { InkType, Match, PlayerStanding, Round, TournamentMatch, User } from '@/types';
 
 /**
  * Generates a full Round-Robin tournament schedule using the Berger tables / circle method.
@@ -64,8 +64,8 @@ export function generateRoundRobinSchedule(
           player2Id: null, // Bye
           player1Score: 2,
           player2Score: 0,
-          status: 'completed',
-          notes: 'Descanso (BYE) - Victoria automática',
+          status: 'pending', // No se computa hasta que la jornada se cierre oficialmente
+          notes: 'Descanso (BYE) - Se computa al cerrar la jornada',
         });
       } else {
         // Alternate home/away to be fair
@@ -97,16 +97,22 @@ export function generateRoundRobinSchedule(
 
 /**
  * Calculates current standings based on completed matches in Best-of-3 format.
+ * IMPORTANT: Points and stats are ONLY awarded for rounds that are officially CLOSED (completed),
+ * preventing points from future rounds or unearned BYEs.
  */
 export function calculateStandings(
   players: User[],
   matches: Match[],
   pointsWin: number = 3,
   pointsDraw: number = 1,
-  pointsLoss: number = 0
+  pointsLoss: number = 0,
+  rounds?: Round[]
 ): PlayerStanding[] {
+  // Ensure admins are never treated as league players
+  const leaguePlayers = players.filter((p) => p.role !== 'admin');
+
   const playerMap = new Map<string, User>();
-  players.forEach((p) => playerMap.set(p.id, p));
+  leaguePlayers.forEach((p) => playerMap.set(p.id, p));
 
   const statsMap = new Map<
     string,
@@ -122,7 +128,7 @@ export function calculateStandings(
     }
   >();
 
-  players.forEach((p) => {
+  leaguePlayers.forEach((p) => {
     statsMap.set(p.id, {
       matchesPlayed: 0,
       matchesWon: 0,
@@ -135,9 +141,34 @@ export function calculateStandings(
     });
   });
 
-  // Sort matches by round to compute recent form in chronological order
+  // Closed rounds IDs: Only count matches if their round is officially completed
+  const completedRoundIds = rounds
+    ? new Set(rounds.filter((r) => r.status === 'completed').map((r) => r.id))
+    : null;
+
+  // Filter matches: Only completed matches belonging to completed rounds (and closed BYEs)
   const completedMatches = matches
-    .filter((m) => m.status === 'completed')
+    .filter((m) => {
+      // If rounds are passed, the round MUST be completed for points to count
+      if (completedRoundIds && !completedRoundIds.has(m.roundId)) {
+        return false;
+      }
+
+      // If it's a regular match, status must be completed
+      if (m.player2Id) {
+        return m.status === 'completed';
+      }
+
+      // If it's a BYE, only count if the round is completed!
+      if (!m.player2Id) {
+        if (completedRoundIds) {
+          return completedRoundIds.has(m.roundId);
+        }
+        return m.status === 'completed';
+      }
+
+      return false;
+    })
     .sort((a, b) => a.roundNumber - b.roundNumber);
 
   completedMatches.forEach((m) => {
@@ -199,7 +230,7 @@ export function calculateStandings(
   });
 
   // Convert to array and calculate rates
-  const standings: PlayerStanding[] = players.map((p) => {
+  const standings: PlayerStanding[] = leaguePlayers.map((p) => {
     const s = statsMap.get(p.id)!;
     const gameDiff = s.gamesWon - s.gamesLost;
     const totalGames = s.gamesWon + s.gamesLost;
@@ -255,9 +286,14 @@ export function calculateStandings(
 }
 
 /**
- * Calculates Lorcana ink meta statistics
+ * Calculates Lorcana ink meta statistics from recorded league and tournament matches.
+ * Uses the exact decks played in each match, falling back to profile inks if not entered.
  */
-export function calculateMetaStats(matches: Match[], players: User[]) {
+export function calculateMetaStats(
+  matches: Match[],
+  players: User[],
+  tournamentMatches: TournamentMatch[] = []
+) {
   const inkCounts: Record<InkType, { played: number; won: number }> = {
     Amber: { played: 0, won: 0 },
     Amethyst: { played: 0, won: 0 },
@@ -270,30 +306,67 @@ export function calculateMetaStats(matches: Match[], players: User[]) {
   const completed = matches.filter((m) => m.status === 'completed' && m.player2Id);
   const playerMap = new Map<string, User>(players.map((p) => [p.id, p]));
 
+  // Process League Matches
   completed.forEach((m) => {
     const p1 = playerMap.get(m.player1Id);
     const p2 = m.player2Id ? playerMap.get(m.player2Id) : null;
 
-    const p1Inks = m.player1Inks || (p1?.primaryInk && p1?.secondaryInk ? [p1.primaryInk, p1.secondaryInk] : null);
-    const p2Inks = m.player2Inks || (p2?.primaryInk && p2?.secondaryInk ? [p2.primaryInk, p2.secondaryInk] : null);
+    const p1Inks: [InkType, InkType] | null = m.player1Inks || (p1?.primaryInk && p1?.secondaryInk ? [p1.primaryInk, p1.secondaryInk] : null);
+    const p2Inks: [InkType, InkType] | null = m.player2Inks || (p2?.primaryInk && p2?.secondaryInk ? [p2.primaryInk, p2.secondaryInk] : null);
 
     const p1Won = m.player1Score > m.player2Score;
     const p2Won = m.player2Score > m.player1Score;
 
     if (p1Inks) {
-      p1Inks.forEach((ink) => {
-        inkCounts[ink].played += 1;
-        if (p1Won) inkCounts[ink].won += 1;
+      p1Inks.forEach((ink: InkType) => {
+        if (inkCounts[ink]) {
+          inkCounts[ink].played += 1;
+          if (p1Won) inkCounts[ink].won += 1;
+        }
       });
     }
 
     if (p2Inks) {
-      p2Inks.forEach((ink) => {
-        inkCounts[ink].played += 1;
-        if (p2Won) inkCounts[ink].won += 1;
+      p2Inks.forEach((ink: InkType) => {
+        if (inkCounts[ink]) {
+          inkCounts[ink].played += 1;
+          if (p2Won) inkCounts[ink].won += 1;
+        }
       });
     }
   });
+
+  // Process Tournament Matches
+  tournamentMatches
+    .filter((m) => m.status === 'completed' && m.player1Id && m.player2Id)
+    .forEach((m) => {
+      const p1 = playerMap.get(m.player1Id!);
+      const p2 = playerMap.get(m.player2Id!);
+
+      const p1Inks: [InkType, InkType] | null = m.player1Inks || (p1?.primaryInk && p1?.secondaryInk ? [p1.primaryInk, p1.secondaryInk] : null);
+      const p2Inks: [InkType, InkType] | null = m.player2Inks || (p2?.primaryInk && p2?.secondaryInk ? [p2.primaryInk, p2.secondaryInk] : null);
+
+      const p1Won = m.winnerId === m.player1Id || m.player1Score > m.player2Score;
+      const p2Won = m.winnerId === m.player2Id || m.player2Score > m.player1Score;
+
+      if (p1Inks) {
+        p1Inks.forEach((ink: InkType) => {
+          if (inkCounts[ink]) {
+            inkCounts[ink].played += 1;
+            if (p1Won) inkCounts[ink].won += 1;
+          }
+        });
+      }
+
+      if (p2Inks) {
+        p2Inks.forEach((ink: InkType) => {
+          if (inkCounts[ink]) {
+            inkCounts[ink].played += 1;
+            if (p2Won) inkCounts[ink].won += 1;
+          }
+        });
+      }
+    });
 
   return Object.entries(inkCounts).map(([ink, stat]) => ({
     ink: ink as InkType,

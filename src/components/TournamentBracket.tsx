@@ -4,7 +4,7 @@ import React from 'react';
 import { Tournament, TournamentMatch, User } from '@/types';
 import { AvatarBadge } from './AvatarBadge';
 import { DualInkBadge } from './InkBadge';
-import { Trophy, Crown, Swords, CheckCircle2, Clock, Edit3 } from 'lucide-react';
+import { Trophy, Crown, Swords, CheckCircle2, Clock, Edit3, MoveHorizontal } from 'lucide-react';
 
 interface TournamentBracketProps {
   tournament: Tournament;
@@ -30,11 +30,11 @@ export function TournamentBracket({
   const runnerUp = tournament.runnerUpId ? playerMap.get(tournament.runnerUpId) : null;
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       {/* Champion Podium if Completed */}
       {tournament.status === 'completed' && champion && (
-        <div className="p-6 rounded-3xl bg-gradient-to-r from-amber-500/20 via-slate-900 to-amber-950/30 border-2 border-amber-500/50 shadow-2xl relative overflow-hidden">
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-6">
+        <div className="p-4 sm:p-6 rounded-3xl bg-gradient-to-r from-amber-500/20 via-slate-900 to-amber-950/30 border-2 border-amber-500/50 shadow-2xl relative overflow-hidden">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-5">
             <div className="flex items-center gap-4 text-center sm:text-left">
               <div className="relative">
                 <AvatarBadge avatarId={champion.avatar} name={champion.name} size="xl" />
@@ -46,7 +46,7 @@ export function TournamentBracket({
                 <span className="text-[11px] font-bold uppercase tracking-widest text-amber-400 block mb-1">
                   🏆 ¡Campeón del Torneo!
                 </span>
-                <h3 className="text-2xl font-black text-white">{champion.name}</h3>
+                <h3 className="text-xl sm:text-2xl font-black text-white">{champion.name}</h3>
                 <div className="mt-1 flex items-center gap-2 justify-center sm:justify-start">
                   <DualInkBadge
                     primary={champion.primaryInk}
@@ -61,7 +61,7 @@ export function TournamentBracket({
             </div>
 
             {runnerUp && (
-              <div className="flex items-center gap-3 bg-slate-950/70 border border-slate-800 px-4 py-3 rounded-2xl">
+              <div className="flex items-center gap-3 bg-slate-950/70 border border-slate-800 px-4 py-2.5 rounded-2xl w-full sm:w-auto justify-center sm:justify-start">
                 <AvatarBadge avatarId={runnerUp.avatar} name={runnerUp.name} size="md" />
                 <div className="text-left">
                   <span className="text-[10px] uppercase font-bold text-slate-400 block">Subcampeón 🥈</span>
@@ -73,8 +73,16 @@ export function TournamentBracket({
         </div>
       )}
 
-      {/* Bracket Rounds Grid */}
-      <div className="grid grid-cols-1 md:grid-flow-col md:auto-cols-fr gap-6 items-stretch overflow-x-auto pb-4">
+      {/* Mobile Swipe Hint */}
+      {levels.length > 1 && (
+        <div className="md:hidden flex items-center justify-center gap-2 text-xs text-amber-400/90 bg-amber-500/10 border border-amber-500/20 py-2 px-3 rounded-xl font-medium">
+          <MoveHorizontal className="w-4 h-4 animate-pulse shrink-0" />
+          <span>Desliza horizontalmente para ver todo el cuadro</span>
+        </div>
+      )}
+
+      {/* Bracket Rounds Grid with smooth horizontal scroll */}
+      <div className="grid grid-cols-1 md:grid-flow-col md:auto-cols-fr gap-4 sm:gap-6 items-stretch overflow-x-auto pb-4 scrollbar-thin">
         {levels.map((level) => {
           const roundMatches = tournament.matches
             .filter((m) => m.roundLevel === level)
@@ -82,7 +90,7 @@ export function TournamentBracket({
           const roundName = roundMatches[0]?.roundName || `Ronda ${level}`;
 
           return (
-            <div key={level} className="flex flex-col min-w-[260px] space-y-4">
+            <div key={level} className="flex flex-col min-w-[260px] space-y-3.5">
               {/* Round Header */}
               <div className="text-center py-2 px-3 rounded-xl bg-slate-900 border border-slate-800">
                 <h4 className="font-bold text-xs uppercase tracking-wider text-amber-400">
@@ -94,7 +102,7 @@ export function TournamentBracket({
               </div>
 
               {/* Match Cards in this Column */}
-              <div className="flex-1 flex flex-col justify-around gap-4">
+              <div className="flex-1 flex flex-col justify-around gap-3.5">
                 {roundMatches.map((match) => {
                   const p1 = match.player1Id ? playerMap.get(match.player1Id) : null;
                   const p2 = match.player2Id ? playerMap.get(match.player2Id) : null;
@@ -106,7 +114,7 @@ export function TournamentBracket({
                   return (
                     <div
                       key={match.id}
-                      className={`rounded-2xl border p-3.5 transition-all relative ${
+                      className={`rounded-2xl border p-3 transition-all relative ${
                         isCompleted
                           ? 'bg-slate-900/80 border-slate-800 shadow-md'
                           : isReady

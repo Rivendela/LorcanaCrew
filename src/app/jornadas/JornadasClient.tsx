@@ -9,6 +9,7 @@ import { useRouter } from 'next/navigation';
 interface JornadasClientProps {
   league: League;
   rounds: Round[];
+  allRoundsTotal?: number;
   initialMatches: Match[];
   players: User[];
   currentUser: { id: string; role: 'admin' | 'player' } | null;
@@ -17,14 +18,16 @@ interface JornadasClientProps {
 export function JornadasClient({
   league,
   rounds,
+  allRoundsTotal,
   initialMatches,
   players,
   currentUser,
 }: JornadasClientProps) {
   const router = useRouter();
+  const isAdmin = currentUser?.role === 'admin';
   const [selectedRoundNumber, setSelectedRoundNumber] = useState<number>(() => {
     const current = rounds.find((r) => r.isCurrent);
-    return current ? current.roundNumber : 1;
+    return current ? current.roundNumber : (rounds[0]?.roundNumber || 1);
   });
 
   const [filterMode, setFilterMode] = useState<'all' | 'mine' | 'pending'>('all');
@@ -50,21 +53,22 @@ export function JornadasClient({
   const completedCount = roundMatches.filter((m) => m.status === 'completed').length;
   const isRoundFinished = completedCount === roundMatches.length;
 
-  // Previous round check to help admin verify
+  // Previous round check: only count real matches between players (not BYEs)
   const prevRound = selectedRoundNumber > 1 ? rounds.find((r) => r.roundNumber === selectedRoundNumber - 1) : null;
   const prevRoundMatches = prevRound ? initialMatches.filter((m) => m.roundNumber === prevRound.roundNumber) : [];
-  const prevRoundPending = prevRoundMatches.filter((m) => m.status === 'pending').length;
+  const prevRoundPending = prevRoundMatches.filter((m) => m.status === 'pending' && m.player2Id && !m.isBye).length;
 
   const handleLaunchRound = async (roundId: string) => {
     if (prevRoundPending > 0) {
-      const confirmLaunch = confirm(
-        `Atención: La Jornada ${selectedRoundNumber - 1} tiene aún ${prevRoundPending} partido(s) pendiente(s). ¿Estás seguro de que quieres lanzar la Jornada ${selectedRoundNumber} ahora?`
+      alert(
+        `No se puede pasar a la Jornada ${selectedRoundNumber}: la Jornada ${selectedRoundNumber - 1} tiene aún ${prevRoundPending} partido(s) pendiente(s). Todos los partidos deben completarse antes de avanzar.`
       );
-      if (!confirmLaunch) return;
-    } else {
-      const confirmLaunch = confirm(`¿Lanzar oficialmente la Jornada ${selectedRoundNumber} para el grupo?`);
-      if (!confirmLaunch) return;
+      setActionError(`No se puede avanzar: aún quedan ${prevRoundPending} partido(s) pendientes en la jornada anterior.`);
+      return;
     }
+
+    const confirmLaunch = confirm(`¿Lanzar oficialmente la Jornada ${selectedRoundNumber} para el grupo?`);
+    if (!confirmLaunch) return;
 
     setLaunching(true);
     setActionError(null);
@@ -92,7 +96,6 @@ export function JornadasClient({
     }
   };
 
-  const isAdmin = currentUser?.role === 'admin';
   const isCurrentActiveRound = currentRound?.isCurrent || currentRound?.status === 'active';
 
   return (
@@ -107,7 +110,7 @@ export function JornadasClient({
             <div>
               <h1 className="text-2xl font-bold text-white">Jornadas & Partidos Bo3</h1>
               <p className="text-xs text-slate-400">
-                CCREW • {rounds.length} semanas de liga programadas
+                CCREW • {isAdmin ? `${allRoundsTotal || rounds.length} semanas de liga programadas` : `Jornada ${selectedRoundNumber} de ${allRoundsTotal || rounds.length}`}
               </p>
             </div>
           </div>
@@ -171,9 +174,9 @@ export function JornadasClient({
             </div>
             <p className="text-xs text-slate-400">
               {prevRoundPending > 0 && selectedRoundNumber > 1 ? (
-                <span className="text-amber-400 font-medium flex items-center gap-1 mt-0.5">
-                  <AlertTriangle className="w-3.5 h-3.5" />
-                  La Jornada {selectedRoundNumber - 1} tiene {prevRoundPending} partido(s) pendiente(s). Verifica antes de abrir la siguiente.
+                <span className="text-rose-400 font-medium flex items-center gap-1 mt-0.5">
+                  <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                  La Jornada {selectedRoundNumber - 1} tiene {prevRoundPending} partido(s) pendiente(s). No se puede pasar de jornada hasta que terminen todos los partidos.
                 </span>
               ) : (
                 <span>Revisa que todos los resultados estén correctos antes de activar esta ronda.</span>
@@ -184,8 +187,8 @@ export function JornadasClient({
           {!isCurrentActiveRound && (
             <button
               onClick={() => handleLaunchRound(currentRound.id)}
-              disabled={launching}
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs text-slate-950 bg-gradient-to-r from-amber-400 to-amber-300 hover:from-amber-300 hover:to-amber-200 transition-all shadow-md shadow-amber-500/20 shrink-0 disabled:opacity-50"
+              disabled={launching || (prevRoundPending > 0 && selectedRoundNumber > 1)}
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs text-slate-950 bg-gradient-to-r from-amber-400 to-amber-300 hover:from-amber-300 hover:to-amber-200 transition-all shadow-md shadow-amber-500/20 shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Rocket className={`w-4 h-4 ${launching ? 'animate-bounce' : ''}`} />
               <span>{launching ? 'Activando...' : `Lanzar Jornada ${selectedRoundNumber} Ahora`}</span>
@@ -202,8 +205,8 @@ export function JornadasClient({
       )}
 
       {/* Rounds Horizontal Selector */}
-      <div className="bg-slate-900/50 border border-slate-800/80 rounded-2xl p-3 shadow-lg">
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-thin">
+      <div className="bg-slate-900/50 border border-slate-800/80 rounded-2xl p-2.5 sm:p-3 shadow-lg">
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
           {rounds.map((r) => {
             const isSelected = r.roundNumber === selectedRoundNumber;
             const matchesOfThisRound = initialMatches.filter((m) => m.roundNumber === r.roundNumber);
@@ -240,17 +243,17 @@ export function JornadasClient({
       </div>
 
       {/* Round Header Info */}
-      <div className="flex items-center justify-between bg-slate-900/30 border border-slate-800 px-4 py-3 rounded-xl">
-        <div className="flex items-center gap-3">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between bg-slate-900/30 border border-slate-800 px-3.5 sm:px-4 py-3 rounded-xl gap-3">
+        <div className="flex items-center gap-2 sm:gap-3">
           <button
             onClick={() => setSelectedRoundNumber(Math.max(1, selectedRoundNumber - 1))}
             disabled={selectedRoundNumber === 1}
-            className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 disabled:opacity-30 disabled:cursor-not-allowed"
+            className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 disabled:opacity-30 disabled:cursor-not-allowed shrink-0"
           >
             <ChevronLeft className="w-4 h-4" />
           </button>
-          <div>
-            <h2 className="text-base font-bold text-white flex items-center gap-2">
+          <div className="min-w-0 flex-1">
+            <h2 className="text-sm sm:text-base font-bold text-white flex items-center gap-2 flex-wrap">
               <span>{currentRound?.title}</span>
               {currentRound?.isCurrent && (
                 <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 font-semibold">
@@ -258,24 +261,24 @@ export function JornadasClient({
                 </span>
               )}
             </h2>
-            <p className="text-xs text-slate-400">
-              Fechas programadas: {currentRound?.startDate} hasta {currentRound?.endDate}
+            <p className="text-[11px] sm:text-xs text-slate-400 truncate">
+              {currentRound?.startDate} hasta {currentRound?.endDate}
             </p>
           </div>
           <button
             onClick={() => setSelectedRoundNumber(Math.min(rounds.length, selectedRoundNumber + 1))}
             disabled={selectedRoundNumber === rounds.length}
-            className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 disabled:opacity-30 disabled:cursor-not-allowed"
+            className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 disabled:opacity-30 disabled:cursor-not-allowed shrink-0"
           >
             <ChevronRight className="w-4 h-4" />
           </button>
         </div>
 
-        <div className="text-right">
+        <div className="flex items-center justify-between sm:justify-end sm:flex-col sm:items-end gap-2 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-800/60">
           <span className="text-xs font-mono text-slate-300">
             {completedCount} / {roundMatches.length} completados
           </span>
-          <div className="w-28 h-1.5 bg-slate-800 rounded-full mt-1 overflow-hidden">
+          <div className="w-24 sm:w-28 h-1.5 bg-slate-800 rounded-full overflow-hidden">
             <div
               className="h-full bg-amber-400 rounded-full"
               style={{ width: `${(completedCount / Math.max(1, roundMatches.length)) * 100}%` }}

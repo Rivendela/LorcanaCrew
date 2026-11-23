@@ -8,12 +8,13 @@ export const dynamic = 'force-dynamic';
 export default async function TorneosPage() {
   const tournaments = await getTournaments();
   const allUsers = await getUsers();
+  const players = allUsers.filter((u) => u.role === 'player');
   const currentUser = await getCurrentUser();
 
   return (
     <TorneosClient
       tournaments={tournaments}
-      players={allUsers}
+      players={players}
       currentUser={currentUser}
     />
   );

@@ -1,5 +1,5 @@
 import React from 'react';
-import { InkType, Match, User } from '@/types';
+import { InkType, Match, TournamentMatch, User } from '@/types';
 import { calculateMetaStats } from '@/lib/league-engine';
 import { LORCANA_INKS } from '@/lib/constants';
 import { BarChart2, ShieldCheck, Flame, Sparkles } from 'lucide-react';
@@ -7,10 +7,11 @@ import { BarChart2, ShieldCheck, Flame, Sparkles } from 'lucide-react';
 interface MetaStatsViewProps {
   matches: Match[];
   players: User[];
+  tournamentMatches?: TournamentMatch[];
 }
 
-export function MetaStatsView({ matches, players }: MetaStatsViewProps) {
-  const stats = calculateMetaStats(matches, players);
+export function MetaStatsView({ matches, players, tournamentMatches = [] }: MetaStatsViewProps) {
+  const stats = calculateMetaStats(matches, players, tournamentMatches);
 
   // Sort by win rate DESC
   const sortedStats = [...stats].sort((a, b) => b.winRate - a.winRate);

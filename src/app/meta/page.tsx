@@ -1,5 +1,5 @@
 import React from 'react';
-import { getActiveLeague, getMatches, getUsers } from '@/lib/db';
+import { getActiveLeague, getMatches, getTournaments, getUsers } from '@/lib/db';
 import { MetaStatsView } from '@/components/MetaStatsView';
 import { BarChart3 } from 'lucide-react';
 import Link from 'next/link';
@@ -11,6 +11,8 @@ export default async function MetaPage() {
   const allUsers = await getUsers();
   const players = allUsers.filter((u) => u.role === 'player');
   const matches = league ? await getMatches(league.id) : [];
+  const tournaments = await getTournaments();
+  const tournamentMatches = tournaments.flatMap((t) => t.matches);
 
   return (
     <div className="space-y-8">
@@ -23,13 +25,17 @@ export default async function MetaPage() {
           <div>
             <h1 className="text-2xl font-bold text-white">Meta y Estadísticas de Tintas</h1>
             <p className="text-xs text-slate-400">
-              Análisis del rendimiento de cada color en las partidas Bo3 de la liga
+              Análisis del rendimiento de cada color en las partidas Bo3 de liga y torneos
             </p>
           </div>
         </div>
       </div>
 
-      <MetaStatsView matches={matches} players={players} />
+      <MetaStatsView
+        matches={matches}
+        players={players}
+        tournamentMatches={tournamentMatches}
+      />
     </div>
   );
 }

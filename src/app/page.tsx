@@ -26,7 +26,8 @@ export default async function HomePage() {
     matches,
     league?.pointsWin || 3,
     league?.pointsDraw || 1,
-    league?.pointsLoss || 0
+    league?.pointsLoss || 0,
+    rounds
   );
 
   const currentRound = rounds.find((r) => r.isCurrent) || rounds[0];
@@ -43,7 +44,7 @@ export default async function HomePage() {
   return (
     <div className="space-y-8">
       {/* Hero Banner */}
-      <div className="relative overflow-hidden rounded-3xl border border-amber-500/30 bg-gradient-to-br from-slate-900 via-slate-900/90 to-amber-950/20 p-6 sm:p-8 shadow-2xl">
+      <div className="relative overflow-hidden rounded-2xl sm:rounded-3xl border border-amber-500/30 bg-gradient-to-br from-slate-900 via-slate-900/90 to-amber-950/20 p-5 sm:p-8 shadow-2xl">
         <div className="relative z-10 flex flex-col md:flex-row md:items-center md:justify-between gap-6">
           <div>
             <div className="flex items-center gap-2 flex-wrap mb-3">
@@ -203,7 +204,7 @@ export default async function HomePage() {
             </div>
 
             {/* Rank 1 */}
-            <div className="order-1 md:order-2 bg-gradient-to-b from-amber-500/15 to-slate-900 border-2 border-amber-500/50 rounded-2xl p-5 shadow-2xl flex items-center gap-4 scale-[1.02]">
+            <div className="order-1 md:order-2 bg-gradient-to-b from-amber-500/15 to-slate-900 border-2 border-amber-500/50 rounded-2xl p-5 shadow-2xl flex items-center gap-4 md:scale-[1.02]">
               <div className="w-14 h-14 rounded-2xl bg-amber-500/20 border border-amber-500/60 flex items-center justify-center font-black text-2xl text-amber-300 shrink-0 shadow-lg shadow-amber-500/20">
                 👑
               </div>
@@ -254,7 +255,7 @@ export default async function HomePage() {
 
       {/* Main Standings Table (ALWAYS VISIBLE!) */}
       <div>
-        <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 gap-2">
           <div>
             <h2 className="text-xl font-bold text-white flex items-center gap-2">
               <Trophy className="w-5 h-5 text-amber-400" />
@@ -265,7 +266,7 @@ export default async function HomePage() {
             </p>
           </div>
 
-          <span className="text-xs text-slate-400 font-mono">
+          <span className="text-xs text-slate-400 font-mono self-start sm:self-auto">
             {players.length} Iluminadores en el Crew
           </span>
         </div>
@@ -280,7 +281,7 @@ export default async function HomePage() {
       {/* Current Round Preview (If rounds exist) */}
       {currentRound && currentMatches.length > 0 && (
         <div className="pt-4">
-          <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 gap-2">
             <div>
               <h2 className="text-lg font-bold text-white flex items-center gap-2">
                 <Swords className="w-5 h-5 text-amber-400" />
@@ -292,7 +293,7 @@ export default async function HomePage() {
             </div>
             <Link
               href="/jornadas"
-              className="text-xs font-semibold text-amber-400 hover:text-amber-300 flex items-center gap-1"
+              className="text-xs font-semibold text-amber-400 hover:text-amber-300 flex items-center gap-1 self-start sm:self-auto"
             >
               <span>Ver todas las jornadas</span>
               <ChevronRight className="w-3.5 h-3.5" />

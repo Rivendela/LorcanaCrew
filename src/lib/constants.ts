@@ -90,7 +90,7 @@ export const LORCANA_FORMATS = {
 };
 
 export const LORCANA_AVATARS = [
-  { id: 'mickey', name: 'Mickey Hechicero', ink: 'Amethyst', icon: '🪄' },
+  { id: 'mickey', name: 'Mickey Hechicero', ink: 'Amethyst', icon: '🔧' },
   { id: 'maleficent', name: 'Maléfica Dragón', ink: 'Ruby', icon: '🐉' },
   { id: 'stitch', name: 'Stitch Estrella de Rock', ink: 'Amber', icon: '🎸' },
   { id: 'tinkerbell', name: 'Campanilla Hada Gigante', ink: 'Steel', icon: '🧚' },
@@ -100,7 +100,7 @@ export const LORCANA_AVATARS = [
   { id: 'ursula', name: 'Úrsula Engañosa', ink: 'Emerald', icon: '🐙' },
   { id: 'beast', name: 'Bestia Incansable', ink: 'Steel', icon: '🦁' },
   { id: 'ariel', name: 'Ariel Coleccionista', ink: 'Amber', icon: '🧜‍♀️' },
-  { id: 'maui', name: 'Maui Semidiós', ink: 'Ruby', icon: '🪝' },
+  { id: 'maui', name: 'Maui Semidiós', ink: 'Ruby', icon: '🦈' },
   { id: 'belle', name: 'Bella Extraña pero Hermosa', ink: 'Sapphire', icon: '📚' },
   { id: 'jafar', name: 'Jafar Sultán Ilusionista', ink: 'Amethyst', icon: '🐍' },
   { id: 'robin_hood', name: 'Robin Hood Campeón', ink: 'Steel', icon: '🏹' },

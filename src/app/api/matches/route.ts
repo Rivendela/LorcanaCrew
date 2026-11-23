@@ -9,7 +9,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Debes iniciar sesión para registrar resultados' }, { status: 401 });
     }
 
-    const { matchId, player1Score, player2Score, notes } = await req.json();
+    const { matchId, player1Score, player2Score, notes, player1Inks, player2Inks } = await req.json();
 
     if (!matchId || player1Score === undefined || player2Score === undefined) {
       return NextResponse.json({ error: 'Datos de partido incompletos' }, { status: 400 });
@@ -37,7 +37,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'No tienes permiso para modificar este partido' }, { status: 403 });
     }
 
-    const updated = await updateMatchResult(matchId, p1, p2, session.userId, notes);
+    const updated = await updateMatchResult(
+      matchId,
+      p1,
+      p2,
+      session.userId,
+      notes,
+      player1Inks,
+      player2Inks
+    );
 
     return NextResponse.json({ success: true, match: updated });
   } catch (error) {

@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { DatabaseSchema, League, Match, Round, Tournament, User } from '@/types';
+import { DatabaseSchema, InkType, League, Match, Round, Tournament, User } from '@/types';
 import { generateRoundRobinSchedule } from './league-engine';
 
 const isVercel = !!process.env.VERCEL;
@@ -254,7 +254,9 @@ export async function updateMatchResult(
   player1Score: number,
   player2Score: number,
   reportedByUserId: string,
-  notes?: string
+  notes?: string,
+  player1Inks?: [InkType, InkType],
+  player2Inks?: [InkType, InkType]
 ): Promise<Match | null> {
   const db = await getDatabase();
   const match = db.matches.find((m) => m.id === matchId);
@@ -265,6 +267,8 @@ export async function updateMatchResult(
   match.status = 'completed';
   match.reportedBy = reportedByUserId;
   match.notes = notes || match.notes;
+  if (player1Inks) match.player1Inks = player1Inks;
+  if (player2Inks) match.player2Inks = player2Inks;
   match.playedAt = new Date().toISOString();
 
   await saveDatabase(db);
@@ -276,6 +280,22 @@ export async function launchRound(leagueId: string, roundId: string): Promise<Ro
   const league = db.leagues.find((l) => l.id === leagueId);
   const targetRound = db.rounds.find((r) => r.id === roundId && r.leagueId === leagueId);
   if (!targetRound || !league) return null;
+
+  // Verify that all previous round matches are completed
+  const pendingPreviousMatches = db.matches.filter(
+    (m) =>
+      m.leagueId === leagueId &&
+      m.roundNumber < targetRound.roundNumber &&
+      m.status === 'pending' &&
+      m.player2Id &&
+      !m.isBye
+  );
+
+  if (pendingPreviousMatches.length > 0) {
+    throw new Error(
+      `No se puede pasar a la Jornada ${targetRound.roundNumber}: aún quedan ${pendingPreviousMatches.length} partido(s) pendiente(s) en jornadas anteriores. Todos los partidos deben completarse.`
+    );
+  }
 
   // Update round statuses
   db.rounds.forEach((r) => {
@@ -395,6 +415,26 @@ export async function closeRound(leagueId: string, roundId: string): Promise<Rou
   const db = await getDatabase();
   const round = db.rounds.find((r) => r.id === roundId && r.leagueId === leagueId);
   if (!round) return null;
+
+  // Check if any real match in this round is still pending
+  const pendingMatches = db.matches.filter(
+    (m) => m.leagueId === leagueId && m.roundId === roundId && m.status === 'pending' && m.player2Id && !m.isBye
+  );
+
+  if (pendingMatches.length > 0) {
+    throw new Error(
+      `No se puede cerrar la Jornada ${round.roundNumber}: aún quedan ${pendingMatches.length} partido(s) pendiente(s) por terminar.`
+    );
+  }
+
+  // Auto-complete any BYE match in this round so points are awarded upon closing
+  db.matches.forEach((m) => {
+    if (m.leagueId === leagueId && m.roundId === roundId && (!m.player2Id || m.isBye)) {
+      m.status = 'completed';
+      m.player1Score = 2;
+      m.player2Score = 0;
+    }
+  });
 
   round.status = 'completed';
   round.isCurrent = false;

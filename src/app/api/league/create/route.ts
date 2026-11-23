@@ -15,14 +15,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Nombre de liga y temporada requeridos' }, { status: 400 });
     }
 
-    let finalPlayerIds = playerIds;
-    if (!finalPlayerIds || finalPlayerIds.length === 0) {
-      const allUsers = await getUsers();
-      finalPlayerIds = allUsers.filter((u) => u.role === 'player').map((u) => u.id);
+    const allUsers = await getUsers();
+    const nonAdminUserIds = new Set(allUsers.filter((u) => u.role === 'player').map((u) => u.id));
+
+    let finalPlayerIds: string[] = [];
+    if (!playerIds || playerIds.length === 0) {
+      finalPlayerIds = Array.from(nonAdminUserIds);
+    } else {
+      finalPlayerIds = (playerIds as string[]).filter((id) => nonAdminUserIds.has(id));
     }
 
     if (finalPlayerIds.length < 2) {
-      return NextResponse.json({ error: 'Se necesitan al menos 2 jugadores para generar una liga' }, { status: 400 });
+      return NextResponse.json({ error: 'Se necesitan al menos 2 jugadores válidos (el administrador no puede ser jugador)' }, { status: 400 });
     }
 
     const newLeague = await createNewLeague(name, seasonName, finalPlayerIds, format || 'porcana');

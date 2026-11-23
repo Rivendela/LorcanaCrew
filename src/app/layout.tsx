@@ -37,6 +37,14 @@ export default function RootLayout({
           <p className="text-[11px] text-slate-400 mt-1">
             Formatos: Porcana • Core • Infiniti • Puntuación Bo3 Semanal
           </p>
+          <div className="mt-2.5">
+            <a
+              href="/como-se-usa"
+              className="text-xs text-amber-400/90 hover:text-amber-300 font-medium underline underline-offset-4 transition-colors"
+            >
+              📖 ¿Cómo se usa? Consulta la Guía Oficial del Iluminador
+            </a>
+          </div>
         </footer>
       </body>
     </html>

@@ -27,11 +27,14 @@ import {
   Crown,
   Eye,
   Award,
+  Palette,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { AvatarBadge } from '@/components/AvatarBadge';
 import { DualInkBadge } from '@/components/InkBadge';
 import { TournamentBracket } from '@/components/TournamentBracket';
+import { TournamentSwissView } from '@/components/TournamentSwissView';
+import { calculateDefaultSwissRounds } from '@/lib/tournament-engine';
 
 interface AdminClientProps {
   league?: League;
@@ -94,8 +97,10 @@ export function AdminClient({
   const [isCreatingTournament, setIsCreatingTournament] = useState(false);
   const [tName, setTName] = useState('I Copa Caldereta Lorcana');
   const [tFormat, setTFormat] = useState<TournamentFormat>('porcana');
+  const [tType, setTType] = useState<'bracket' | 'swiss'>('bracket');
+  const [tSwissRoundsTotal, setTSwissRoundsTotal] = useState<number>(3);
   const [tDate, setTDate] = useState(new Date().toISOString().split('T')[0]);
-  const [tDescription, setTDescription] = useState('Torneo eliminatorio directo Bo3');
+  const [tDescription, setTDescription] = useState('Torneo oficial Bo3 CCREW');
   const [tSelectedPlayers, setTSelectedPlayers] = useState<string[]>(players.map((p) => p.id));
 
   // Tournament Match Scoring Modal
@@ -103,6 +108,10 @@ export function AdminClient({
   const [tScore1, setTScore1] = useState(2);
   const [tScore2, setTScore2] = useState(0);
   const [tMatchNotes, setTMatchNotes] = useState('');
+  const [tP1Ink1, setTP1Ink1] = useState<InkType>('Amber');
+  const [tP1Ink2, setTP1Ink2] = useState<InkType>('Steel');
+  const [tP2Ink1, setTP2Ink1] = useState<InkType>('Amber');
+  const [tP2Ink2, setTP2Ink2] = useState<InkType>('Steel');
 
   // Match Fix Modal State
   const [editingMatch, setEditingMatch] = useState<Match | null>(null);
@@ -200,15 +209,21 @@ export function AdminClient({
 
   // 3. Launch Round
   const handleLaunchRound = async (round: Round) => {
-    const prevPending = matches.filter((m) => m.roundNumber < round.roundNumber && m.status === 'pending').length;
+    const prevPending = matches.filter(
+      (m) => m.roundNumber < round.roundNumber && m.status === 'pending' && m.player2Id && !m.isBye
+    ).length;
     if (prevPending > 0) {
-      const confirmLaunch = confirm(
-        `Atención: Hay ${prevPending} partido(s) pendiente(s) en jornadas anteriores. ¿Estás seguro de que deseas lanzar la Jornada ${round.roundNumber}?`
+      alert(
+        `No se puede pasar a la Jornada ${round.roundNumber}: aún quedan ${prevPending} partido(s) pendiente(s) en jornadas anteriores. Todos los partidos deben haberse completado antes de avanzar.`
       );
-      if (!confirmLaunch) return;
-    } else {
-      if (!confirm(`¿Lanzar oficialmente la Jornada ${round.roundNumber} para el grupo?`)) return;
+      setMessage({
+        type: 'error',
+        text: `No se puede avanzar de jornada: quedan ${prevPending} partido(s) pendientes en jornadas anteriores.`,
+      });
+      return;
     }
+
+    if (!confirm(`¿Lanzar oficialmente la Jornada ${round.roundNumber} para el grupo?`)) return;
 
     setLoading(true);
     setMessage(null);
@@ -237,6 +252,20 @@ export function AdminClient({
 
   // 4. Close Round (dispatches auto-backup)
   const handleCloseRound = async (round: Round) => {
+    const roundPending = matches.filter(
+      (m) => m.roundId === round.id && m.status === 'pending' && m.player2Id && !m.isBye
+    ).length;
+    if (roundPending > 0) {
+      alert(
+        `No se puede cerrar la Jornada ${round.roundNumber}: aún quedan ${roundPending} partido(s) pendiente(s). Todos los partidos deben haberse jugado antes de cerrar.`
+      );
+      setMessage({
+        type: 'error',
+        text: `No se puede cerrar la Jornada ${round.roundNumber}: quedan ${roundPending} partido(s) pendientes.`,
+      });
+      return;
+    }
+
     if (!confirm(`¿Cerrar oficialmente la Jornada ${round.roundNumber}? Esto creará automáticamente un punto de restauración (Backup).`)) return;
 
     setLoading(true);
@@ -395,6 +424,8 @@ export function AdminClient({
         body: JSON.stringify({
           name: tName,
           format: tFormat,
+          type: tType,
+          swissRoundsTotal: tType === 'swiss' ? tSwissRoundsTotal : undefined,
           date: tDate,
           description: tDescription,
           playerIds: tSelectedPlayers,
@@ -403,7 +434,7 @@ export function AdminClient({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
 
-      setMessage({ type: 'success', text: `¡Torneo "${tName}" creado y cuadro generado con éxito!` });
+      setMessage({ type: 'success', text: `¡Torneo "${tName}" (${tType === 'swiss' ? 'Suizo' : 'Eliminatoria'}) creado y generado con éxito!` });
       setIsCreatingTournament(false);
       router.refresh();
     } catch (err: any) {
@@ -451,6 +482,8 @@ export function AdminClient({
           matchId: tScoringMatch.match.id,
           player1Score: tScore1,
           player2Score: tScore2,
+          player1Inks: [tP1Ink1, tP1Ink2],
+          player2Inks: [tP2Ink1, tP2Ink2],
           notes: tMatchNotes,
         }),
       });
@@ -907,14 +940,14 @@ export function AdminClient({
             <div className="bg-slate-900/90 border border-amber-500/30 rounded-3xl p-6 sm:p-8 shadow-2xl animate-in fade-in duration-200">
               <h3 className="text-base font-bold text-white mb-2 flex items-center gap-2">
                 <Sparkles className="w-4 h-4 text-amber-400" />
-                <span>Configurar Nuevo Torneo Eliminatorio</span>
+                <span>Configurar Nuevo Torneo CCREW</span>
               </h3>
               <p className="text-xs text-slate-400 mb-6">
-                Elige el formato y a los participantes. Se generará automáticamente el árbol de cruces (cuartos, semifinales y final).
+                Elige el formato, el sistema de juego (Eliminatoria o Suizo) y los participantes para arrancar el torneo.
               </p>
 
               <form onSubmit={handleCreateTournament} className="space-y-5">
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                   <div>
                     <label className="block text-xs font-semibold text-slate-300 mb-1.5 uppercase tracking-wider">
                       Nombre del Torneo
@@ -931,7 +964,7 @@ export function AdminClient({
 
                   <div>
                     <label className="block text-xs font-semibold text-slate-300 mb-1.5 uppercase tracking-wider">
-                      Formato
+                      Formato de Barajas
                     </label>
                     <select
                       value={tFormat}
@@ -946,29 +979,95 @@ export function AdminClient({
 
                   <div>
                     <label className="block text-xs font-semibold text-slate-300 mb-1.5 uppercase tracking-wider">
-                      Fecha del Torneo
+                      Sistema / Tipo de Torneo
+                    </label>
+                    <select
+                      value={tType}
+                      onChange={(e) => {
+                        const val = e.target.value as 'bracket' | 'swiss';
+                        setTType(val);
+                        if (val === 'swiss') {
+                          setTSwissRoundsTotal(calculateDefaultSwissRounds(tSelectedPlayers.length));
+                        }
+                      }}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500/60"
+                    >
+                      <option value="bracket">⚔️ Eliminatoria Directa (Playoffs Bo3)</option>
+                      <option value="swiss">🛡️ Sistema Suizo (Todas las Rondas)</option>
+                    </select>
+                  </div>
+
+                  {tType === 'swiss' ? (
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-300 mb-1.5 uppercase tracking-wider">
+                        Rondas Suizas Totales
+                      </label>
+                      <input
+                        type="number"
+                        min="2"
+                        max="10"
+                        value={tSwissRoundsTotal}
+                        onChange={(e) => setTSwissRoundsTotal(Math.max(2, Number(e.target.value)))}
+                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500/60"
+                      />
+                    </div>
+                  ) : (
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-300 mb-1.5 uppercase tracking-wider">
+                        Fecha del Torneo
+                      </label>
+                      <input
+                        type="date"
+                        value={tDate}
+                        onChange={(e) => setTDate(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500/60"
+                      />
+                    </div>
+                  )}
+                </div>
+
+                {tType === 'swiss' && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-300 mb-1.5 uppercase tracking-wider">
+                        Fecha del Torneo
+                      </label>
+                      <input
+                        type="date"
+                        value={tDate}
+                        onChange={(e) => setTDate(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500/60"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-300 mb-1.5 uppercase tracking-wider">
+                        Descripción / Detalles (Opcional)
+                      </label>
+                      <input
+                        type="text"
+                        value={tDescription}
+                        onChange={(e) => setTDescription(e.target.value)}
+                        placeholder="Ej. Torneo suizo Bo3 con desempates Buchholz"
+                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500/60"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {tType === 'bracket' && (
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-1.5 uppercase tracking-wider">
+                      Descripción / Detalles (Opcional)
                     </label>
                     <input
-                      type="date"
-                      value={tDate}
-                      onChange={(e) => setTDate(e.target.value)}
+                      type="text"
+                      value={tDescription}
+                      onChange={(e) => setTDescription(e.target.value)}
+                      placeholder="Ej. Torneo eliminatorio de fin de semana con premio para el campeón"
                       className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500/60"
                     />
                   </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1.5 uppercase tracking-wider">
-                    Descripción / Detalles (Opcional)
-                  </label>
-                  <input
-                    type="text"
-                    value={tDescription}
-                    onChange={(e) => setTDescription(e.target.value)}
-                    placeholder="Ej. Torneo eliminatorio de fin de semana con premio para el campeón"
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500/60"
-                  />
-                </div>
+                )}
 
                 {/* Player multi-selector */}
                 <div>
@@ -1034,7 +1133,7 @@ export function AdminClient({
                     disabled={loading}
                     className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-amber-400 to-amber-300 hover:from-amber-300 hover:to-amber-200 text-slate-950 font-bold text-xs shadow-lg shadow-amber-500/20 transition-all disabled:opacity-50"
                   >
-                    {loading ? 'Generando Cuadro...' : 'Generar Cuadro de Eliminatorias & Iniciar Torneo'}
+                    {loading ? 'Generando Torneo...' : tType === 'swiss' ? 'Generar Rondas Suizas & Iniciar Torneo' : 'Generar Cuadro de Eliminatorias & Iniciar Torneo'}
                   </button>
                 </div>
               </form>
@@ -1056,6 +1155,9 @@ export function AdminClient({
                     <span className="text-xs font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded">
                       {LORCANA_FORMATS[activeTournament.format]?.label || activeTournament.format}
                     </span>
+                    <span className="text-xs font-bold text-slate-300 bg-slate-800 px-2 py-0.5 rounded">
+                      {activeTournament.type === 'swiss' ? '🛡️ Sistema Suizo' : '⚔️ Playoffs Eliminatorios'}
+                    </span>
                   </div>
                   <h3 className="text-xl font-black text-white">{activeTournament.name}</h3>
                 </div>
@@ -1071,17 +1173,31 @@ export function AdminClient({
                 </div>
               </div>
 
-              <TournamentBracket
-                tournament={activeTournament}
-                players={players}
-                currentUser={{ id: adminUser.id || adminUser.userId || 'admin', role: 'admin' }}
-                onEditMatch={(m) => {
-                  setTScoringMatch({ match: m, tournamentId: activeTournament.id });
-                  setTScore1(m.player1Score || 2);
-                  setTScore2(m.player2Score || 0);
-                  setTMatchNotes(m.notes || '');
-                }}
-              />
+              {activeTournament.type === 'swiss' ? (
+                <TournamentSwissView
+                  tournament={activeTournament}
+                  players={players}
+                  currentUser={{ id: adminUser.id || adminUser.userId || 'admin', role: 'admin' }}
+                />
+              ) : (
+                <TournamentBracket
+                  tournament={activeTournament}
+                  players={players}
+                  currentUser={{ id: adminUser.id || adminUser.userId || 'admin', role: 'admin' }}
+                  onEditMatch={(m) => {
+                    const p1 = m.player1Id ? playerMap.get(m.player1Id) : null;
+                    const p2 = m.player2Id ? playerMap.get(m.player2Id) : null;
+                    setTScoringMatch({ match: m, tournamentId: activeTournament.id });
+                    setTScore1(m.player1Score || 2);
+                    setTScore2(m.player2Score || 0);
+                    setTP1Ink1(m.player1Inks?.[0] || p1?.primaryInk || 'Amber');
+                    setTP1Ink2(m.player1Inks?.[1] || p1?.secondaryInk || 'Steel');
+                    setTP2Ink1(m.player2Inks?.[0] || p2?.primaryInk || 'Amber');
+                    setTP2Ink2(m.player2Inks?.[1] || p2?.secondaryInk || 'Steel');
+                    setTMatchNotes(m.notes || '');
+                  }}
+                />
+              )}
             </div>
           )}
 
@@ -1114,6 +1230,9 @@ export function AdminClient({
                           </span>
                           <span className="text-[10px] font-bold text-amber-400">
                             {LORCANA_FORMATS[t.format]?.label || t.format}
+                          </span>
+                          <span className="text-[10px] font-bold text-slate-300 bg-slate-800 px-2 py-0.5 rounded">
+                            {t.type === 'swiss' ? '🛡️ Suizo' : '⚔️ Playoffs'}
                           </span>
                         </div>
                         <h4 className="font-bold text-white text-sm">{t.name}</h4>
@@ -1398,7 +1517,7 @@ export function AdminClient({
       {/* --- MODAL: FIX / EDIT MATCH SCORES --- */}
       {editingMatch && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fade-in">
-          <div className="bg-slate-900 border border-amber-500/30 rounded-2xl max-w-md w-full p-6 shadow-2xl relative">
+          <div className="bg-slate-900 border border-amber-500/30 rounded-2xl max-w-md w-full p-5 sm:p-6 shadow-2xl relative max-h-[90vh] overflow-y-auto">
             <button
               onClick={() => setEditingMatch(null)}
               className="absolute top-4 right-4 text-slate-400 hover:text-white p-1 rounded-lg"
@@ -1692,7 +1811,7 @@ export function AdminClient({
       {/* --- MODAL: SCORING TOURNAMENT MATCH (ADMIN) --- */}
       {tScoringMatch && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fade-in">
-          <div className="bg-slate-900 border border-amber-500/40 rounded-3xl max-w-md w-full p-6 shadow-2xl relative">
+          <div className="bg-slate-900 border border-amber-500/40 rounded-3xl max-w-md w-full p-5 sm:p-6 shadow-2xl relative max-h-[90vh] overflow-y-auto">
             <button
               onClick={() => setTScoringMatch(null)}
               className="absolute top-4 right-4 text-slate-400 hover:text-white p-1 rounded-lg"
@@ -1734,6 +1853,68 @@ export function AdminClient({
                     onChange={(e) => setTScore2(Number(e.target.value))}
                     className="w-16 bg-slate-900 border border-slate-700 rounded-xl text-center font-mono font-black text-xl text-amber-400 p-2 mx-auto outline-none"
                   />
+                </div>
+              </div>
+
+              {/* Inks Pickers for Meta Stats */}
+              <div className="bg-slate-950/80 border border-slate-800 rounded-2xl p-3.5 space-y-2.5">
+                <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-300">
+                  <Palette className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Colores de baraja jugados (Meta Report)</span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <span className="text-[11px] text-slate-400 font-medium block truncate">
+                      {playerMap.get(tScoringMatch.match.player1Id || '')?.name || 'Jugador 1'}:
+                    </span>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <select
+                        value={tP1Ink1}
+                        onChange={(e) => setTP1Ink1(e.target.value as InkType)}
+                        className="bg-slate-900 border border-slate-700 rounded-xl px-2 py-1.5 text-xs text-white outline-none"
+                      >
+                        {ALL_INKS.map((ink) => (
+                          <option key={ink} value={ink}>{LORCANA_INKS[ink].name}</option>
+                        ))}
+                      </select>
+                      <select
+                        value={tP1Ink2}
+                        onChange={(e) => setTP1Ink2(e.target.value as InkType)}
+                        className="bg-slate-900 border border-slate-700 rounded-xl px-2 py-1.5 text-xs text-white outline-none"
+                      >
+                        {ALL_INKS.map((ink) => (
+                          <option key={ink} value={ink}>{LORCANA_INKS[ink].name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <span className="text-[11px] text-slate-400 font-medium block truncate">
+                      {playerMap.get(tScoringMatch.match.player2Id || '')?.name || 'Jugador 2'}:
+                    </span>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <select
+                        value={tP2Ink1}
+                        onChange={(e) => setTP2Ink1(e.target.value as InkType)}
+                        className="bg-slate-900 border border-slate-700 rounded-xl px-2 py-1.5 text-xs text-white outline-none"
+                      >
+                        {ALL_INKS.map((ink) => (
+                          <option key={ink} value={ink}>{LORCANA_INKS[ink].name}</option>
+                        ))}
+                      </select>
+                      <select
+                        value={tP2Ink2}
+                        onChange={(e) => setTP2Ink2(e.target.value as InkType)}
+                        className="bg-slate-900 border border-slate-700 rounded-xl px-2 py-1.5 text-xs text-white outline-none"
+                      >
+                        {ALL_INKS.map((ink) => (
+                          <option key={ink} value={ink}>{LORCANA_INKS[ink].name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
                 </div>
               </div>
 

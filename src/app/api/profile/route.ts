@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
-import { getActiveLeague, getDatabase, getMatches, getUserById, updateUser } from '@/lib/db';
+import { getActiveLeague, getDatabase, getMatches, getRounds, getUserById, updateUser } from '@/lib/db';
 import { calculateStandings } from '@/lib/league-engine';
 import { User } from '@/types';
 
@@ -18,13 +18,18 @@ export async function GET() {
 
     const league = await getActiveLeague();
     const allMatches = league ? await getMatches(league.id) : [];
+    const rounds = league ? await getRounds(league.id) : [];
+    const completedRoundIds = new Set(rounds.filter((r) => r.status === 'completed').map((r) => r.id));
 
-    // Filter user matches
+    // Filter user matches from completed rounds
     const userMatches = allMatches.filter(
       (m) => m.player1Id === user.id || m.player2Id === user.id
     );
 
-    const completedMatches = userMatches.filter((m) => m.status === 'completed');
+    const completedMatches = userMatches.filter((m) => {
+      if (!completedRoundIds.has(m.roundId)) return false;
+      return m.status === 'completed';
+    });
 
     // Calculate user's specific stats
     let matchesWon = 0;

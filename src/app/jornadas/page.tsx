@@ -29,14 +29,28 @@ export default async function JornadasPage() {
     );
   }
 
-  const rounds = await getRounds(league.id);
-  const matches = await getMatches(league.id);
+  const allRounds = await getRounds(league.id);
+  const allMatches = await getMatches(league.id);
+  const isAdmin = currentUser?.role === 'admin';
+
+  // Non-admins only see completed rounds and the current active round. Future rounds are admin-only.
+  const activeRound = allRounds.find((r) => r.isCurrent || r.status === 'active') || allRounds[0];
+  const maxAllowedRound = activeRound ? activeRound.roundNumber : 1;
+
+  const visibleRounds = isAdmin
+    ? allRounds
+    : allRounds.filter((r) => r.roundNumber <= maxAllowedRound);
+
+  const visibleMatches = isAdmin
+    ? allMatches
+    : allMatches.filter((m) => m.roundNumber <= maxAllowedRound);
 
   return (
     <JornadasClient
       league={league}
-      rounds={rounds}
-      initialMatches={matches}
+      rounds={visibleRounds}
+      allRoundsTotal={allRounds.length}
+      initialMatches={visibleMatches}
       players={players}
       currentUser={currentUser}
     />

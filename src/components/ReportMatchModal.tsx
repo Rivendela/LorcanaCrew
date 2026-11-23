@@ -1,10 +1,11 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Match, User } from '@/types';
+import { InkType, Match, User } from '@/types';
 import { AvatarBadge } from './AvatarBadge';
 import { DualInkBadge } from './InkBadge';
-import { X, Check, Swords, AlertCircle } from 'lucide-react';
+import { X, Check, Swords, AlertCircle, Palette } from 'lucide-react';
+import { ALL_INKS, LORCANA_INKS } from '@/lib/constants';
 
 interface ReportMatchModalProps {
   match: Match;
@@ -24,6 +25,21 @@ export function ReportMatchModal({
   const [score1, setScore1] = useState<number>(match.player1Score || 0);
   const [score2, setScore2] = useState<number>(match.player2Score || 0);
   const [notes, setNotes] = useState<string>(match.notes || '');
+
+  // Deck Inks for each player
+  const [p1Ink1, setP1Ink1] = useState<InkType>(
+    match.player1Inks?.[0] || player1.primaryInk || 'Amber'
+  );
+  const [p1Ink2, setP1Ink2] = useState<InkType>(
+    match.player1Inks?.[1] || player1.secondaryInk || 'Steel'
+  );
+  const [p2Ink1, setP2Ink1] = useState<InkType>(
+    match.player2Inks?.[0] || player2?.primaryInk || 'Amethyst'
+  );
+  const [p2Ink2, setP2Ink2] = useState<InkType>(
+    match.player2Inks?.[1] || player2?.secondaryInk || 'Ruby'
+  );
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -49,6 +65,8 @@ export function ReportMatchModal({
           player1Score: score1,
           player2Score: score2,
           notes,
+          player1Inks: [p1Ink1, p1Ink2],
+          player2Inks: player2 ? [p2Ink1, p2Ink2] : undefined,
         }),
       });
 
@@ -66,7 +84,7 @@ export function ReportMatchModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fade-in">
-      <div className="bg-slate-900 border border-amber-500/30 rounded-2xl max-w-lg w-full p-6 shadow-2xl relative">
+      <div className="bg-slate-900 border border-amber-500/30 rounded-2xl max-w-lg w-full p-5 sm:p-6 shadow-2xl relative max-h-[90vh] overflow-y-auto">
         <button
           onClick={onClose}
           className="absolute top-4 right-4 text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors"
@@ -91,15 +109,17 @@ export function ReportMatchModal({
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <form onSubmit={handleSubmit} className="space-y-5">
           {/* Players matchup view */}
-          <div className="grid grid-cols-5 items-center gap-2 bg-slate-950/60 p-4 rounded-xl border border-slate-800">
+          <div className="grid grid-cols-5 items-center gap-2 bg-slate-950/60 p-3 sm:p-4 rounded-xl border border-slate-800">
             {/* Player 1 */}
-            <div className="col-span-2 text-center flex flex-col items-center">
-              <AvatarBadge avatarId={player1.avatar} name={player1.name} size="lg" />
-              <p className="font-semibold text-slate-200 mt-2 text-sm truncate max-w-[120px]">{player1.name}</p>
+            <div className="col-span-2 text-center flex flex-col items-center min-w-0">
+              <AvatarBadge avatarId={player1.avatar} name={player1.name} size="md" />
+              <p className="font-semibold text-slate-200 mt-1.5 text-xs sm:text-sm truncate max-w-[100px] sm:max-w-[130px]">
+                {player1.name}
+              </p>
               <div className="mt-1">
-                <DualInkBadge primary={player1.primaryInk} secondary={player1.secondaryInk} size="sm" />
+                <DualInkBadge primary={p1Ink1} secondary={p1Ink2} size="sm" className="justify-center" />
               </div>
             </div>
 
@@ -111,17 +131,19 @@ export function ReportMatchModal({
             </div>
 
             {/* Player 2 */}
-            <div className="col-span-2 text-center flex flex-col items-center">
+            <div className="col-span-2 text-center flex flex-col items-center min-w-0">
               {player2 ? (
                 <>
-                  <AvatarBadge avatarId={player2.avatar} name={player2.name} size="lg" />
-                  <p className="font-semibold text-slate-200 mt-2 text-sm truncate max-w-[120px]">{player2.name}</p>
+                  <AvatarBadge avatarId={player2.avatar} name={player2.name} size="md" />
+                  <p className="font-semibold text-slate-200 mt-1.5 text-xs sm:text-sm truncate max-w-[100px] sm:max-w-[130px]">
+                    {player2.name}
+                  </p>
                   <div className="mt-1">
-                    <DualInkBadge primary={player2.primaryInk} secondary={player2.secondaryInk} size="sm" />
+                    <DualInkBadge primary={p2Ink1} secondary={p2Ink2} size="sm" className="justify-center" />
                   </div>
                 </>
               ) : (
-                <div className="text-slate-400 text-sm italic">BYE (Descanso)</div>
+                <div className="text-slate-400 text-xs sm:text-sm italic">BYE (Descanso)</div>
               )}
             </div>
           </div>
@@ -197,9 +219,90 @@ export function ReportMatchModal({
             </div>
           </div>
 
+          {/* Deck Inks Selection for Meta Statistics */}
+          <div className="bg-slate-950/60 p-3.5 rounded-xl border border-amber-500/20 space-y-3">
+            <div className="flex items-center gap-1.5">
+              <Palette className="w-3.5 h-3.5 text-amber-400" />
+              <label className="text-xs font-bold text-white uppercase tracking-wider">
+                Colores de Mazo Jugados
+              </label>
+              <span className="text-[10px] text-slate-400 ml-auto font-normal">
+                (Alimenta el Meta Report)
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+              {/* Player 1 Deck Colors */}
+              <div className="space-y-1">
+                <span className="text-[11px] font-semibold text-slate-300 block truncate">
+                  Mazo de {player1.name}:
+                </span>
+                <div className="grid grid-cols-2 gap-1.5">
+                  <select
+                    value={p1Ink1}
+                    onChange={(e) => setP1Ink1(e.target.value as InkType)}
+                    className="bg-slate-900 border border-slate-700 text-slate-200 text-xs rounded-lg p-1.5 outline-none focus:border-amber-500/50"
+                  >
+                    {ALL_INKS.map((ink) => (
+                      <option key={ink} value={ink}>
+                        {LORCANA_INKS[ink].label}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    value={p1Ink2}
+                    onChange={(e) => setP1Ink2(e.target.value as InkType)}
+                    className="bg-slate-900 border border-slate-700 text-slate-200 text-xs rounded-lg p-1.5 outline-none focus:border-amber-500/50"
+                  >
+                    {ALL_INKS.map((ink) => (
+                      <option key={ink} value={ink}>
+                        {LORCANA_INKS[ink].label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Player 2 Deck Colors */}
+              {player2 && (
+                <div className="space-y-1">
+                  <span className="text-[11px] font-semibold text-slate-300 block truncate">
+                    Mazo de {player2.name}:
+                  </span>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <select
+                      value={p2Ink1}
+                      onChange={(e) => setP2Ink1(e.target.value as InkType)}
+                      className="bg-slate-900 border border-slate-700 text-slate-200 text-xs rounded-lg p-1.5 outline-none focus:border-amber-500/50"
+                    >
+                      {ALL_INKS.map((ink) => (
+                        <option key={ink} value={ink}>
+                          {LORCANA_INKS[ink].label}
+                        </option>
+                      ))}
+                    </select>
+                    <select
+                      value={p2Ink2}
+                      onChange={(e) => setP2Ink2(e.target.value as InkType)}
+                      className="bg-slate-900 border border-slate-700 text-slate-200 text-xs rounded-lg p-1.5 outline-none focus:border-amber-500/50"
+                    >
+                      {ALL_INKS.map((ink) => (
+                        <option key={ink} value={ink}>
+                          {LORCANA_INKS[ink].label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
           {/* Notes field */}
           <div>
-            <label className="block text-xs font-semibold text-slate-400 mb-1">Comentarios / Lore de la partida</label>
+            <label className="block text-xs font-semibold text-slate-400 mb-1">
+              Comentarios / Lore de la partida
+            </label>
             <input
               type="text"
               value={notes}

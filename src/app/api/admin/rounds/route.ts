@@ -16,8 +16,12 @@ export async function PUT(req: NextRequest) {
     }
 
     if (action === 'close' && leagueId) {
-      const closed = await closeRound(leagueId, roundId);
-      return NextResponse.json({ success: true, round: closed });
+      try {
+        const closed = await closeRound(leagueId, roundId);
+        return NextResponse.json({ success: true, round: closed });
+      } catch (err: any) {
+        return NextResponse.json({ error: err.message || 'Error al cerrar la jornada' }, { status: 400 });
+      }
     }
 
     const updates: any = {};

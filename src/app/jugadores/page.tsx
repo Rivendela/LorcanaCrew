@@ -1,5 +1,5 @@
 import React from 'react';
-import { getActiveLeague, getMatches, getUsers } from '@/lib/db';
+import { getActiveLeague, getMatches, getRounds, getUsers } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 import { getCurrentUser } from '@/lib/auth';
@@ -16,13 +16,15 @@ export default async function JugadoresPage() {
   const session = await getCurrentUser();
   const currentUser = session ? (allUsers.find((u) => u.id === session.userId || u.id === session.id) ?? null) : null;
   const matches = league ? await getMatches(league.id) : [];
+  const rounds = league ? await getRounds(league.id) : [];
 
   const standings = calculateStandings(
     players,
     matches,
     league?.pointsWin || 3,
     league?.pointsDraw || 1,
-    league?.pointsLoss || 0
+    league?.pointsLoss || 0,
+    rounds
   );
 
   const standingsMap = new Map(standings.map((s) => [s.player.id, s]));

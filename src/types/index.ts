@@ -57,6 +57,7 @@ export interface Match {
   roundNumber: number;
   player1Id: string;
   player2Id: string | null; // null = BYE
+  isBye?: boolean;
   player1Score: number;     // Games won in Bo3 (0, 1, 2)
   player2Score: number;     // Games won in Bo3 (0, 1, 2)
   player1Inks?: [InkType, InkType];
@@ -104,13 +105,14 @@ export interface PlayerStanding {
   recentForm: ('W' | 'D' | 'L')[];
 }
 
+export type TournamentType = 'bracket' | 'swiss';
 export type TournamentStatus = 'draft' | 'active' | 'completed';
 export type TournamentFormat = 'porcana' | 'core' | 'infiniti';
 
 export interface TournamentMatch {
   id: string;
-  roundName: string; // 'Cuartos de Final', 'Semifinal', 'Gran Final', 'Tercer Puesto'
-  roundLevel: number; // 1 = Primera ronda, 2 = Semis, 3 = Final
+  roundName: string; // 'Cuartos de Final', 'Semifinal', 'Gran Final' o 'Ronda 1 Suizo'
+  roundLevel: number; // 1 = Primera ronda, 2 = Semis, 3 = Final, o número de ronda en Suizo
   matchIndex: number;
   nextMatchId?: string;
   nextMatchSlot?: 1 | 2;
@@ -118,21 +120,41 @@ export interface TournamentMatch {
   player2Id: string | null;
   player1Score: number;
   player2Score: number;
+  player1Inks?: [InkType, InkType];
+  player2Inks?: [InkType, InkType];
   winnerId: string | null;
   status: 'pending' | 'completed';
   notes?: string;
   playedAt?: string;
+  swissRound?: number;
+}
+
+export interface SwissStanding {
+  position: number;
+  player: User;
+  matchesPlayed: number;
+  matchesWon: number;
+  matchesDrawn: number;
+  matchesLost: number;
+  gamesWon: number;
+  gamesLost: number;
+  gameDiff: number;
+  points: number;
+  buchholz: number; // Sum of opponents' points (desempate)
 }
 
 export interface Tournament {
   id: string;
   name: string;
   description?: string;
+  type?: TournamentType; // 'bracket' (eliminatoria) o 'swiss' (suizo)
   format: TournamentFormat;
   date: string;
   status: TournamentStatus;
   playerIds: string[];
   matches: TournamentMatch[];
+  swissRoundsTotal?: number;
+  currentSwissRound?: number;
   championId?: string | null;
   runnerUpId?: string | null;
   thirdPlaceId?: string | null;

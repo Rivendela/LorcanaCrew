@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
-import { Tournament, TournamentMatch, User } from '@/types';
+import { InkType, Tournament, TournamentMatch, User } from '@/types';
 import { TournamentBracket } from '@/components/TournamentBracket';
+import { TournamentSwissView } from '@/components/TournamentSwissView';
 import {
   Trophy,
   Swords,
@@ -19,8 +20,9 @@ import {
   Award,
   Users,
   Calendar,
+  Palette,
 } from 'lucide-react';
-import { LORCANA_FORMATS } from '@/lib/constants';
+import { ALL_INKS, LORCANA_FORMATS, LORCANA_INKS } from '@/lib/constants';
 import { AvatarBadge } from '@/components/AvatarBadge';
 import { DualInkBadge } from '@/components/InkBadge';
 import Link from 'next/link';
@@ -50,7 +52,8 @@ export function TorneosClient({
 }: TorneosClientProps) {
   const activeTournament = tournaments.find((t) => t.status === 'active') || null;
   const pastTournaments = tournaments.filter((t) => t.status === 'completed');
-  const playerMap = useMemo(() => new Map<string, User>(players.map((p) => [p.id, p])), [players]);
+  const validPlayers = useMemo(() => players.filter((p) => p.role !== 'admin'), [players]);
+  const playerMap = useMemo(() => new Map<string, User>(validPlayers.map((p) => [p.id, p])), [validPlayers]);
 
   // Open on 'active' if a tournament is running, otherwise open on 'ranking'
   const [activeTab, setActiveTab] = useState<'active' | 'ranking' | 'history'>(() => {
@@ -72,6 +75,10 @@ export function TorneosClient({
   const [score1, setScore1] = useState(2);
   const [score2, setScore2] = useState(0);
   const [matchNotes, setMatchNotes] = useState('');
+  const [p1Ink1, setP1Ink1] = useState<InkType>('Amber');
+  const [p1Ink2, setP1Ink2] = useState<InkType>('Steel');
+  const [p2Ink1, setP2Ink1] = useState<InkType>('Amber');
+  const [p2Ink2, setP2Ink2] = useState<InkType>('Steel');
   const [savingScore, setSavingScore] = useState(false);
   const [modalError, setModalError] = useState<string | null>(null);
 
@@ -80,7 +87,7 @@ export function TorneosClient({
     const map = new Map<string, TournamentPlayerStats>();
 
     // Initialize map with all players
-    players.forEach((p) => {
+    validPlayers.forEach((p) => {
       map.set(p.id, {
         player: p,
         tournamentsPlayed: 0,
@@ -231,6 +238,8 @@ export function TorneosClient({
           matchId: scoringMatch.match.id,
           player1Score: score1,
           player2Score: score2,
+          player1Inks: [p1Ink1, p1Ink2],
+          player2Inks: [p2Ink1, p2Ink2],
           notes: matchNotes,
         }),
       });
@@ -287,7 +296,7 @@ export function TorneosClient({
       </div>
 
       {/* Navigation Tabs Switcher */}
-      <div className="flex items-center gap-2 border-b border-slate-800 pb-2 overflow-x-auto">
+      <div className="flex items-center gap-2 border-b border-slate-800 pb-2 overflow-x-auto scrollbar-none">
         <button
           onClick={() => setActiveTab('active')}
           className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-sm whitespace-nowrap transition-all ${
@@ -350,6 +359,9 @@ export function TorneosClient({
                     <span className="text-xs font-semibold px-2 py-0.5 rounded-md bg-slate-800 text-slate-300">
                       Formato: {LORCANA_FORMATS[activeTournament.format]?.label || activeTournament.format}
                     </span>
+                    <span className="text-xs font-semibold px-2 py-0.5 rounded-md bg-amber-500/10 border border-amber-500/20 text-amber-300">
+                      {activeTournament.type === 'swiss' ? '🛡️ Sistema Suizo' : '⚔️ Eliminatoria Directa'}
+                    </span>
                     <span className="text-xs text-slate-400 font-mono">
                       {activeTournament.playerIds.length} participantes
                     </span>
@@ -366,17 +378,31 @@ export function TorneosClient({
                 </div>
               </div>
 
-              <TournamentBracket
-                tournament={activeTournament}
-                players={players}
-                currentUser={currentUser}
-                onEditMatch={(m) => {
-                  setScoringMatch({ match: m, tournamentId: activeTournament.id });
-                  setScore1(m.player1Score || 2);
-                  setScore2(m.player2Score || 0);
-                  setMatchNotes(m.notes || '');
-                }}
-              />
+              {activeTournament.type === 'swiss' ? (
+                <TournamentSwissView
+                  tournament={activeTournament}
+                  players={players}
+                  currentUser={currentUser}
+                />
+              ) : (
+                <TournamentBracket
+                  tournament={activeTournament}
+                  players={players}
+                  currentUser={currentUser}
+                  onEditMatch={(m) => {
+                    const p1 = m.player1Id ? playerMap.get(m.player1Id) : null;
+                    const p2 = m.player2Id ? playerMap.get(m.player2Id) : null;
+                    setScoringMatch({ match: m, tournamentId: activeTournament.id });
+                    setScore1(m.player1Score || 2);
+                    setScore2(m.player2Score || 0);
+                    setP1Ink1(m.player1Inks?.[0] || p1?.primaryInk || 'Amber');
+                    setP1Ink2(m.player1Inks?.[1] || p1?.secondaryInk || 'Steel');
+                    setP2Ink1(m.player2Inks?.[0] || p2?.primaryInk || 'Amber');
+                    setP2Ink2(m.player2Inks?.[1] || p2?.secondaryInk || 'Steel');
+                    setMatchNotes(m.notes || '');
+                  }}
+                />
+              )}
             </div>
           ) : (
             <div className="text-center py-20 bg-slate-900/40 border border-slate-800 rounded-3xl p-8 max-w-lg mx-auto shadow-xl">
@@ -504,7 +530,7 @@ export function TorneosClient({
 
               {/* 1st Place */}
               {tournamentStats[0] && (
-                <div className="order-1 md:order-2 bg-gradient-to-b from-amber-500/20 via-slate-900/90 to-slate-950 border-2 border-amber-500/50 p-6 rounded-3xl flex flex-col items-center text-center relative overflow-hidden shadow-2xl -mt-2">
+                <div className="order-1 md:order-2 bg-gradient-to-b from-amber-500/20 via-slate-900/90 to-slate-950 border-2 border-amber-500/50 p-5 sm:p-6 rounded-3xl flex flex-col items-center text-center relative overflow-hidden shadow-2xl md:-mt-2">
                   <div className="absolute top-2 right-3 text-amber-400 text-xs font-black uppercase tracking-wider bg-amber-500/20 px-2 py-0.5 rounded-full border border-amber-500/40">
                     LÍDER
                   </div>
@@ -834,6 +860,9 @@ export function TorneosClient({
                             <span className="text-[10px] font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded">
                               {LORCANA_FORMATS[t.format]?.label || t.format}
                             </span>
+                            <span className="text-[10px] font-bold text-slate-300 bg-slate-800 px-2 py-0.5 rounded">
+                              {t.type === 'swiss' ? '🛡️ Suizo' : '⚔️ Playoffs'}
+                            </span>
                             <span className="text-xs text-slate-500">
                               {t.playerIds.length} participantes
                             </span>
@@ -881,14 +910,22 @@ export function TorneosClient({
                       </div>
                     </div>
 
-                    {/* Expanded Bracket View */}
+                    {/* Expanded Bracket or Swiss View */}
                     {isExpanded && (
                       <div className="p-6 border-t border-slate-800/80 bg-slate-950/40 animate-in fade-in duration-200">
-                        <TournamentBracket
-                          tournament={t}
-                          players={players}
-                          currentUser={currentUser}
-                        />
+                        {t.type === 'swiss' ? (
+                          <TournamentSwissView
+                            tournament={t}
+                            players={players}
+                            currentUser={currentUser}
+                          />
+                        ) : (
+                          <TournamentBracket
+                            tournament={t}
+                            players={players}
+                            currentUser={currentUser}
+                          />
+                        )}
                       </div>
                     )}
                   </div>
@@ -952,6 +989,68 @@ export function TorneosClient({
                     onChange={(e) => setScore2(Number(e.target.value))}
                     className="w-16 bg-slate-900 border border-slate-700 rounded-xl text-center font-mono font-black text-xl text-amber-400 p-2 mx-auto outline-none"
                   />
+                </div>
+              </div>
+
+              {/* Inks Pickers for Meta Stats */}
+              <div className="bg-slate-950/80 border border-slate-800 rounded-2xl p-3.5 space-y-2.5">
+                <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-300">
+                  <Palette className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Colores de baraja jugados (Meta Report)</span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <span className="text-[11px] text-slate-400 font-medium block truncate">
+                      {playerMap.get(scoringMatch.match.player1Id || '')?.name || 'Jugador 1'}:
+                    </span>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <select
+                        value={p1Ink1}
+                        onChange={(e) => setP1Ink1(e.target.value as InkType)}
+                        className="bg-slate-900 border border-slate-700 rounded-xl px-2 py-1.5 text-xs text-white outline-none"
+                      >
+                        {ALL_INKS.map((ink) => (
+                          <option key={ink} value={ink}>{LORCANA_INKS[ink].name}</option>
+                        ))}
+                      </select>
+                      <select
+                        value={p1Ink2}
+                        onChange={(e) => setP1Ink2(e.target.value as InkType)}
+                        className="bg-slate-900 border border-slate-700 rounded-xl px-2 py-1.5 text-xs text-white outline-none"
+                      >
+                        {ALL_INKS.map((ink) => (
+                          <option key={ink} value={ink}>{LORCANA_INKS[ink].name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <span className="text-[11px] text-slate-400 font-medium block truncate">
+                      {playerMap.get(scoringMatch.match.player2Id || '')?.name || 'Jugador 2'}:
+                    </span>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <select
+                        value={p2Ink1}
+                        onChange={(e) => setP2Ink1(e.target.value as InkType)}
+                        className="bg-slate-900 border border-slate-700 rounded-xl px-2 py-1.5 text-xs text-white outline-none"
+                      >
+                        {ALL_INKS.map((ink) => (
+                          <option key={ink} value={ink}>{LORCANA_INKS[ink].name}</option>
+                        ))}
+                      </select>
+                      <select
+                        value={p2Ink2}
+                        onChange={(e) => setP2Ink2(e.target.value as InkType)}
+                        className="bg-slate-900 border border-slate-700 rounded-xl px-2 py-1.5 text-xs text-white outline-none"
+                      >
+                        {ALL_INKS.map((ink) => (
+                          <option key={ink} value={ink}>{LORCANA_INKS[ink].name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
                 </div>
               </div>
 
