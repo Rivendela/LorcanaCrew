@@ -1,0 +1,46 @@
+{
+  "users": [
+    {
+      "id": "user-admin",
+      "username": "admin",
+      "name": "Comisionado CCREW",
+      "passwordHash": "$2b$10$sbTzVOoJQI.L80LVBmCtl./IMC0S2.oU.YiKexsJHXOihb/sYkMZy",
+      "role": "admin",
+      "avatar": "mickey",
+      "primaryInk": "Amethyst",
+      "secondaryInk": "Steel",
+      "createdAt": "2026-11-23T14:30:00.000Z",
+      "inksVisibility": "private",
+      "bio": "Especialista en control y tempo",
+      "favoriteCard": "Elsa - Spirit of Winter"
+    },
+    {
+      "id": "user-1795441944352",
+      "username": "riven",
+      "name": "Riven",
+      "passwordHash": "$2b$10$mLznBG6NrSaxJqIaoP.eAOPiY1FDifdk7gBKFnRmo.c5rcyHJpYz6",
+      "role": "player",
+      "avatar": "maleficent",
+      "primaryInk": "Amethyst",
+      "secondaryInk": "Emerald",
+      "deckName": "",
+      "createdAt": "2026-11-23T13:52:24.352Z",
+      "inksVisibility": "private"
+    },
+    {
+      "id": "user-1795442064950",
+      "username": "riven2",
+      "name": "riven2",
+      "passwordHash": "$2b$10$rOmWKbGgU8SbIWih7IvkD.wVyhXotWDsZ0DXsTGj2LCtOEjl2hTF6",
+      "role": "player",
+      "avatar": "mickey",
+      "primaryInk": "Ruby",
+      "secondaryInk": "Amethyst",
+      "deckName": "",
+      "createdAt": "2026-11-23T13:54:24.950Z"
+    }
+  ],
+  "leagues": [],
+  "rounds": [],
+  "matches": []
+}
