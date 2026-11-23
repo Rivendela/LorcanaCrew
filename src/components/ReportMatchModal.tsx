@@ -12,7 +12,7 @@ interface ReportMatchModalProps {
   player1: User;
   player2: User | null;
   onClose: () => void;
-  onSuccess: () => void;
+  onSuccess: (updatedMatch: Match) => void;
 }
 
 export function ReportMatchModal({
@@ -75,7 +75,7 @@ export function ReportMatchModal({
         throw new Error(data.error || 'Error al guardar el resultado');
       }
 
-      onSuccess();
+      onSuccess(data.match);
     } catch (err: any) {
       setError(err.message || 'Error de conexión');
       setLoading(false);
@@ -162,11 +162,10 @@ export function ReportMatchModal({
                     setScore1(preset.s1);
                     setScore2(preset.s2);
                   }}
-                  className={`px-3 py-2 text-xs font-semibold rounded-lg border transition-all text-center ${
-                    score1 === preset.s1 && score2 === preset.s2
-                      ? 'bg-amber-500 text-slate-950 border-amber-400 font-bold shadow-md shadow-amber-500/20'
-                      : 'bg-slate-800/80 hover:bg-slate-700 text-slate-300 border-slate-700'
-                  }`}
+                  className={`px-3 py-2 text-xs font-semibold rounded-lg border transition-all text-center ${score1 === preset.s1 && score2 === preset.s2
+                    ? 'bg-amber-500 text-slate-950 border-amber-400 font-bold shadow-md shadow-amber-500/20'
+                    : 'bg-slate-800/80 hover:bg-slate-700 text-slate-300 border-slate-700'
+                    }`}
                 >
                   {preset.label}
                 </button>

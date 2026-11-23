@@ -558,6 +558,53 @@ export function TournamentSwissView({
                 </div>
               </div>
 
+              {/* Quick Presets for Tournament Bo3 */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase tracking-wider">
+                  Resultados Rápidos Bo3
+                </label>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {[
+                    {
+                      label: `${playerMap.get(scoringMatch.player1Id || '')?.name || 'P1'} 2 - 0`,
+                      s1: 2,
+                      s2: 0,
+                    },
+                    {
+                      label: `${playerMap.get(scoringMatch.player1Id || '')?.name || 'P1'} 2 - 1`,
+                      s1: 2,
+                      s2: 1,
+                    },
+                    {
+                      label: `${playerMap.get(scoringMatch.player2Id || '')?.name || 'P2'} 2 - 1`,
+                      s1: 1,
+                      s2: 2,
+                    },
+                    {
+                      label: `${playerMap.get(scoringMatch.player2Id || '')?.name || 'P2'} 2 - 0`,
+                      s1: 0,
+                      s2: 2,
+                    },
+                  ].map((preset, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => {
+                        setScore1(preset.s1);
+                        setScore2(preset.s2);
+                      }}
+                      className={`px-2 py-2 text-xs font-semibold rounded-xl border transition-all text-center truncate ${
+                        score1 === preset.s1 && score2 === preset.s2
+                          ? 'bg-amber-500 text-slate-950 border-amber-400 font-bold shadow-md shadow-amber-500/20'
+                          : 'bg-slate-800/80 hover:bg-slate-700 text-slate-300 border-slate-700'
+                      }`}
+                    >
+                      {preset.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               {/* Inks Selection */}
               <div className="bg-slate-950/60 p-3.5 rounded-xl border border-amber-500/20 space-y-3">
                 <div className="flex items-center gap-1.5">

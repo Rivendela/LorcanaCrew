@@ -106,6 +106,7 @@ export const LORCANA_AVATARS = [
   { id: 'robin_hood', name: 'Robin Hood Campeón', ink: 'Steel', icon: '🏹' },
   { id: 'genie', name: 'Genio Poderoso', ink: 'Emerald', icon: '🧞' },
   { id: 'cinderella', name: 'Cenicienta Guerrera', ink: 'Amber', icon: '✨' },
+  { id: 'rapunzel', name: 'Rapunzel Curandera', ink: 'Amber', icon: '☀️' },
 ];
 
 export const JWT_SECRET = process.env.JWT_SECRET || 'lorcana-league-secret-key-super-secure-token-2026';

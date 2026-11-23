@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { DatabaseSchema, InkType, League, Match, Round, Tournament, User } from '@/types';
-import { generateRoundRobinSchedule } from './league-engine';
+import { generateRoundRobinSchedule, regenerateFutureSchedule } from './league-engine';
 
 const isVercel = !!process.env.VERCEL;
 const DATA_DIR = isVercel ? path.join('/tmp', 'data') : path.join(process.cwd(), 'data');
@@ -454,6 +454,50 @@ export async function resetCurrentLeague(): Promise<boolean> {
   db.matches = [];
   await saveDatabase(db);
   return true;
+}
+
+export async function regenerateLeagueFutureSchedule(
+  leagueId: string,
+  updatedPlayerIds: string[]
+): Promise<{
+  league: League;
+  rounds: Round[];
+  matches: Match[];
+  maxPreservedRound: number;
+  newRoundsCount: number;
+}> {
+  const db = await getDatabase();
+  const league = db.leagues.find((l) => l.id === leagueId);
+  if (!league) {
+    throw new Error('Liga no encontrada.');
+  }
+
+  const existingRounds = db.rounds.filter((r) => r.leagueId === leagueId);
+  const existingMatches = db.matches.filter((m) => m.leagueId === leagueId);
+
+  const result = regenerateFutureSchedule(
+    leagueId,
+    updatedPlayerIds,
+    existingRounds,
+    existingMatches
+  );
+
+  league.playerIds = updatedPlayerIds;
+
+  // Replace this league's rounds and matches with preserved + regenerated ones
+  db.rounds = db.rounds.filter((r) => r.leagueId !== leagueId).concat(result.rounds);
+  db.matches = db.matches.filter((m) => m.leagueId !== leagueId).concat(result.matches);
+
+  await saveDatabase(db);
+  await createBackup(`Regeneración cruces futuros (${updatedPlayerIds.length} jugadores)`);
+
+  return {
+    league,
+    rounds: result.rounds,
+    matches: result.matches,
+    maxPreservedRound: result.maxPreservedRound,
+    newRoundsCount: result.newRoundsCount,
+  };
 }
 
 // Tournament System (Independent of regular league)

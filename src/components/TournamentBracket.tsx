@@ -114,13 +114,12 @@ export function TournamentBracket({
                   return (
                     <div
                       key={match.id}
-                      className={`rounded-2xl border p-3 transition-all relative ${
-                        isCompleted
-                          ? 'bg-slate-900/80 border-slate-800 shadow-md'
-                          : isReady
+                      className={`rounded-2xl border p-3 transition-all relative ${isCompleted
+                        ? 'bg-slate-900/80 border-slate-800 shadow-md'
+                        : isReady
                           ? 'bg-slate-900/90 border-amber-500/30 hover:border-amber-500/50 shadow-lg'
                           : 'bg-slate-950/40 border-slate-900 opacity-60'
-                      }`}
+                        }`}
                     >
                       {/* Match Header Badge */}
                       <div className="flex items-center justify-between text-[10px] text-slate-500 mb-2 font-mono">
@@ -140,11 +139,10 @@ export function TournamentBracket({
 
                       {/* Player 1 Row */}
                       <div
-                        className={`flex items-center justify-between p-2 rounded-xl transition-all ${
-                          p1Won
-                            ? 'bg-amber-500/15 border border-amber-500/40 text-amber-300 font-bold'
-                            : 'bg-slate-950/60 border border-slate-850 text-slate-300'
-                        }`}
+                        className={`flex items-center justify-between p-2 rounded-xl transition-all ${p1Won
+                          ? 'bg-amber-500/15 border border-amber-500/40 text-amber-300 font-bold'
+                          : 'bg-slate-950/60 border border-slate-850 text-slate-300'
+                          }`}
                       >
                         <div className="flex items-center gap-2 min-w-0 flex-1">
                           {p1 ? (
@@ -163,11 +161,10 @@ export function TournamentBracket({
 
                       {/* Player 2 Row */}
                       <div
-                        className={`flex items-center justify-between p-2 rounded-xl mt-1.5 transition-all ${
-                          p2Won
-                            ? 'bg-amber-500/15 border border-amber-500/40 text-amber-300 font-bold'
-                            : 'bg-slate-950/60 border border-slate-850 text-slate-300'
-                        }`}
+                        className={`flex items-center justify-between p-2 rounded-xl mt-1.5 transition-all ${p2Won
+                          ? 'bg-amber-500/15 border border-amber-500/40 text-amber-300 font-bold'
+                          : 'bg-slate-950/60 border border-slate-850 text-slate-300'
+                          }`}
                       >
                         <div className="flex items-center gap-2 min-w-0 flex-1">
                           {p2 ? (

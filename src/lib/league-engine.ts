@@ -10,7 +10,7 @@ export function generateRoundRobinSchedule(
   startDate: Date = new Date()
 ): { rounds: Round[]; matches: Match[] } {
   const pool = [...playerIds];
-  
+
   // If odd, add null representing a BYE
   const hasBye = pool.length % 2 !== 0;
   if (hasBye) {
@@ -30,7 +30,7 @@ export function generateRoundRobinSchedule(
   for (let r = 0; r < totalRounds; r++) {
     const roundNumber = r + 1;
     const roundId = `round-${leagueId}-${roundNumber}`;
-    
+
     // Calculate week dates (1 week per round)
     const roundStart = new Date(startDate);
     roundStart.setDate(roundStart.getDate() + r * 7);
@@ -93,6 +93,193 @@ export function generateRoundRobinSchedule(
   }
 
   return { rounds, matches };
+}
+
+/**
+ * Regenerates upcoming/future rounds and matches for an ongoing league when new players join,
+ * while STRICTLY preserving all past completed rounds, existing match scores, and previous BYEs.
+ */
+export function regenerateFutureSchedule(
+  leagueId: string,
+  allPlayerIds: string[],
+  existingRounds: Round[],
+  existingMatches: Match[],
+  startDate?: Date
+): {
+  rounds: Round[];
+  matches: Match[];
+  maxPreservedRound: number;
+  newRoundsCount: number;
+} {
+  // 1. Identify preserved rounds:
+  // Any round marked 'completed' OR containing at least one match marked 'completed' is strictly preserved.
+  const preservedRoundNumbers = new Set<number>();
+  for (const r of existingRounds) {
+    if (r.status === 'completed') {
+      preservedRoundNumbers.add(r.roundNumber);
+    }
+  }
+  for (const m of existingMatches) {
+    if (m.status === 'completed') {
+      preservedRoundNumbers.add(m.roundNumber);
+    }
+  }
+
+  const maxPreservedRound = preservedRoundNumbers.size > 0
+    ? Math.max(...Array.from(preservedRoundNumbers))
+    : 0;
+
+  const preservedRounds = existingRounds.filter((r) => r.roundNumber <= maxPreservedRound);
+  const preservedMatches = existingMatches.filter((m) => m.roundNumber <= maxPreservedRound);
+
+  // 2. Identify played pairs and BYE counts in preserved matches
+  const playedPairs = new Set<string>();
+  const byeCounts: Record<string, number> = {};
+  allPlayerIds.forEach((id) => { byeCounts[id] = 0; });
+
+  for (const m of preservedMatches) {
+    if (m.player1Id && m.player2Id) {
+      const key = [m.player1Id, m.player2Id].sort().join(':::');
+      playedPairs.add(key);
+    } else if (m.player1Id && !m.player2Id) {
+      byeCounts[m.player1Id] = (byeCounts[m.player1Id] || 0) + 1;
+    }
+  }
+
+  // 3. Find missing pairings
+  const missingPairs: { p1: string; p2: string; key: string }[] = [];
+  for (let i = 0; i < allPlayerIds.length; i++) {
+    for (let j = i + 1; j < allPlayerIds.length; j++) {
+      const p1 = allPlayerIds[i];
+      const p2 = allPlayerIds[j];
+      const key = [p1, p2].sort().join(':::');
+      if (!playedPairs.has(key)) {
+        missingPairs.push({ p1, p2, key });
+      }
+    }
+  }
+
+  let remaining = [...missingPairs];
+  const newRounds: Round[] = [];
+  const newMatches: Match[] = [];
+  let roundNum = maxPreservedRound + 1;
+
+  // Determine base date from last preserved round or startDate
+  const lastRound = preservedRounds.find((r) => r.roundNumber === maxPreservedRound);
+  let baseDate = startDate || new Date();
+  if (lastRound && lastRound.endDate) {
+    baseDate = new Date(lastRound.endDate);
+    baseDate.setDate(baseDate.getDate() + 1);
+  }
+
+  // 4. Pack missing pairings into rounds
+  while (remaining.length > 0) {
+    const degree: Record<string, number> = {};
+    allPlayerIds.forEach((id) => { degree[id] = 0; });
+    for (const edge of remaining) {
+      degree[edge.p1] = (degree[edge.p1] || 0) + 1;
+      degree[edge.p2] = (degree[edge.p2] || 0) + 1;
+    }
+
+    const roundId = `round-${leagueId}-${roundNum}`;
+    const roundStart = new Date(baseDate);
+    roundStart.setDate(roundStart.getDate() + (roundNum - maxPreservedRound - 1) * 7);
+    const roundEnd = new Date(roundStart);
+    roundEnd.setDate(roundEnd.getDate() + 6);
+
+    const busy = new Set<string>();
+    const roundMatches: Match[] = [];
+
+    // Prioritize edges connecting players with the highest remaining degrees
+    remaining.sort((a, b) => {
+      const scoreA = (degree[a.p1] || 0) + (degree[a.p2] || 0);
+      const scoreB = (degree[b.p1] || 0) + (degree[b.p2] || 0);
+      return scoreB - scoreA;
+    });
+
+    const keptRemaining: typeof remaining = [];
+    let matchIdx = 1;
+
+    for (const edge of remaining) {
+      if (!busy.has(edge.p1) && !busy.has(edge.p2)) {
+        busy.add(edge.p1);
+        busy.add(edge.p2);
+
+        const isAlternate = (matchIdx + roundNum) % 2 === 0;
+        const player1Id = isAlternate ? edge.p1 : edge.p2;
+        const player2Id = isAlternate ? edge.p2 : edge.p1;
+
+        roundMatches.push({
+          id: `match-${leagueId}-r${roundNum}-m${matchIdx}`,
+          leagueId,
+          roundId,
+          roundNumber: roundNum,
+          player1Id,
+          player2Id,
+          player1Score: 0,
+          player2Score: 0,
+          status: 'pending',
+        });
+        matchIdx++;
+      } else {
+        keptRemaining.push(edge);
+      }
+    }
+
+    // Assign BYE if odd number of players
+    const idlePlayers = allPlayerIds.filter((id) => !busy.has(id));
+    if (allPlayerIds.length % 2 !== 0 && idlePlayers.length > 0) {
+      idlePlayers.sort((a, b) => (byeCounts[a] || 0) - (byeCounts[b] || 0));
+      const byePlayer = idlePlayers[0];
+      byeCounts[byePlayer] = (byeCounts[byePlayer] || 0) + 1;
+
+      roundMatches.push({
+        id: `match-${leagueId}-r${roundNum}-m${matchIdx}`,
+        leagueId,
+        roundId,
+        roundNumber: roundNum,
+        player1Id: byePlayer,
+        player2Id: null,
+        player1Score: 2,
+        player2Score: 0,
+        status: 'pending',
+        isBye: true,
+        notes: 'Descanso (BYE) - Se computa al cerrar la jornada',
+      });
+    }
+
+    // Set first newly generated round to active if no preserved round is active
+    const isFirstNewRound = roundNum === maxPreservedRound + 1;
+    const hasActivePreserved = preservedRounds.some((r) => r.status === 'active');
+    const shouldBeActive = isFirstNewRound && !hasActivePreserved;
+
+    newRounds.push({
+      id: roundId,
+      leagueId,
+      roundNumber: roundNum,
+      title: `Jornada ${roundNum}`,
+      startDate: roundStart.toISOString().split('T')[0],
+      endDate: roundEnd.toISOString().split('T')[0],
+      status: shouldBeActive ? 'active' : 'upcoming',
+      isCurrent: shouldBeActive,
+    });
+
+    newMatches.push(...roundMatches);
+    remaining = keptRemaining;
+    roundNum++;
+
+    // Safety guard
+    if (roundNum > maxPreservedRound + 100) {
+      break;
+    }
+  }
+
+  return {
+    rounds: [...preservedRounds, ...newRounds],
+    matches: [...preservedMatches, ...newMatches],
+    maxPreservedRound,
+    newRoundsCount: newRounds.length,
+  };
 }
 
 /**

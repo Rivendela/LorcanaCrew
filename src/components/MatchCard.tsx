@@ -1,18 +1,19 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Match, User } from '@/types';
 import { AvatarBadge } from './AvatarBadge';
 import { DualInkBadge } from './InkBadge';
 import { ReportMatchModal } from './ReportMatchModal';
 import { CheckCircle2, Clock, Edit3 } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 
 interface MatchCardProps {
   match: Match;
   player1: User;
   player2: User | null;
   currentUser: { id: string; role: 'admin' | 'player' } | null;
-  onMatchUpdated?: () => void;
+  onMatchUpdated?: (updatedMatch: Match) => void;
 }
 
 export function MatchCard({
@@ -22,9 +23,15 @@ export function MatchCard({
   currentUser,
   onMatchUpdated,
 }: MatchCardProps) {
+  const router = useRouter();
+  const [currentMatch, setCurrentMatch] = useState<Match>(match);
   const [showModal, setShowModal] = useState(false);
 
-  const isCompleted = match.status === 'completed';
+  useEffect(() => {
+    setCurrentMatch(match);
+  }, [match]);
+
+  const isCompleted = currentMatch.status === 'completed';
   const isBye = !player2;
 
   const canEdit =
@@ -33,9 +40,9 @@ export function MatchCard({
       currentUser.id === player1.id ||
       (player2 && currentUser.id === player2.id));
 
-  const p1Won = isCompleted && match.player1Score > match.player2Score;
-  const p2Won = isCompleted && match.player2Score > match.player1Score;
-  const isDraw = isCompleted && !isBye && match.player1Score === match.player2Score;
+  const p1Won = isCompleted && currentMatch.player1Score > currentMatch.player2Score;
+  const p2Won = isCompleted && currentMatch.player2Score > currentMatch.player1Score;
+  const isDraw = isCompleted && !isBye && currentMatch.player1Score === currentMatch.player2Score;
 
   return (
     <>
@@ -49,7 +56,7 @@ export function MatchCard({
         {/* Top Status Bar */}
         <div className="flex items-center justify-between px-3.5 py-2 bg-slate-950/70 border-b border-slate-800/80 text-xs">
           <span className="text-slate-400 font-semibold font-mono text-[11px]">
-            Jornada {match.roundNumber}
+            Jornada {currentMatch.roundNumber}
           </span>
           <div className="flex items-center gap-1.5">
             {isBye ? (
@@ -97,8 +104,8 @@ export function MatchCard({
                 </div>
                 <div className="mt-1">
                   <DualInkBadge
-                    primary={player1.primaryInk}
-                    secondary={player1.secondaryInk}
+                    primary={currentMatch.player1Inks?.[0] || player1.primaryInk}
+                    secondary={currentMatch.player1Inks?.[1] || player1.secondaryInk}
                     visibility={player1.inksVisibility}
                     isOwnerOrAdmin={currentUser?.id === player1.id || currentUser?.role === 'admin'}
                     size="sm"
@@ -118,7 +125,7 @@ export function MatchCard({
                       : 'bg-slate-900 text-slate-500 border-slate-800'
                   }`}
                 >
-                  {match.player1Score}
+                  {currentMatch.player1Score}
                 </span>
               ) : (
                 <span className="text-xs font-mono text-slate-600 px-2">-</span>
@@ -153,8 +160,8 @@ export function MatchCard({
                     </div>
                     <div className="mt-1">
                       <DualInkBadge
-                        primary={player2.primaryInk}
-                        secondary={player2.secondaryInk}
+                        primary={currentMatch.player2Inks?.[0] || player2.primaryInk}
+                        secondary={currentMatch.player2Inks?.[1] || player2.secondaryInk}
                         visibility={player2.inksVisibility}
                         isOwnerOrAdmin={currentUser?.id === player2.id || currentUser?.role === 'admin'}
                         size="sm"
@@ -178,7 +185,7 @@ export function MatchCard({
                       : 'bg-slate-900 text-slate-500 border-slate-800'
                   }`}
                 >
-                  {match.player2Score}
+                  {currentMatch.player2Score}
                 </span>
               ) : (
                 <span className="text-xs font-mono text-slate-600 px-2">-</span>
@@ -205,8 +212,8 @@ export function MatchCard({
               </p>
               <div className="mt-1">
                 <DualInkBadge
-                  primary={player1.primaryInk}
-                  secondary={player1.secondaryInk}
+                  primary={currentMatch.player1Inks?.[0] || player1.primaryInk}
+                  secondary={currentMatch.player1Inks?.[1] || player1.secondaryInk}
                   visibility={player1.inksVisibility}
                   isOwnerOrAdmin={currentUser?.id === player1.id || currentUser?.role === 'admin'}
                   size="sm"
@@ -219,9 +226,9 @@ export function MatchCard({
           <div className="col-span-2 flex flex-col items-center justify-center shrink-0">
             {isCompleted ? (
               <div className="flex items-center gap-1 font-mono font-black text-lg bg-slate-950 px-2.5 py-1 rounded-lg border border-slate-800 shadow-inner">
-                <span className={p1Won ? 'text-amber-400' : 'text-slate-400'}>{match.player1Score}</span>
+                <span className={p1Won ? 'text-amber-400' : 'text-slate-400'}>{currentMatch.player1Score}</span>
                 <span className="text-slate-600">-</span>
-                <span className={p2Won ? 'text-amber-400' : 'text-slate-400'}>{match.player2Score}</span>
+                <span className={p2Won ? 'text-amber-400' : 'text-slate-400'}>{currentMatch.player2Score}</span>
               </div>
             ) : (
               <span className="text-xs font-bold uppercase tracking-wider text-slate-500 bg-slate-950/80 px-2.5 py-1 rounded-md border border-slate-800">
@@ -243,10 +250,10 @@ export function MatchCard({
                   >
                     {player2.name}
                   </p>
-                  <div className="mt-1">
+                  <div className="mt-1 flex justify-end">
                     <DualInkBadge
-                      primary={player2.primaryInk}
-                      secondary={player2.secondaryInk}
+                      primary={currentMatch.player2Inks?.[0] || player2.primaryInk}
+                      secondary={currentMatch.player2Inks?.[1] || player2.secondaryInk}
                       visibility={player2.inksVisibility}
                       isOwnerOrAdmin={currentUser?.id === player2.id || currentUser?.role === 'admin'}
                       size="sm"
@@ -263,10 +270,10 @@ export function MatchCard({
         </div>
 
         {/* Notes or Lore */}
-        {match.notes && (
+        {currentMatch.notes && (
           <div className="px-4 pb-2.5 -mt-1 text-xs text-slate-400 italic flex items-center gap-1.5 break-words">
             <span className="text-amber-500/70 shrink-0">📜</span>
-            <span className="line-clamp-2">{match.notes}</span>
+            <span className="line-clamp-2">{currentMatch.notes}</span>
           </div>
         )}
 
@@ -289,13 +296,15 @@ export function MatchCard({
 
       {showModal && (
         <ReportMatchModal
-          match={match}
+          match={currentMatch}
           player1={player1}
           player2={player2}
           onClose={() => setShowModal(false)}
-          onSuccess={() => {
+          onSuccess={(updatedMatch) => {
+            setCurrentMatch(updatedMatch);
             setShowModal(false);
-            if (onMatchUpdated) onMatchUpdated();
+            if (onMatchUpdated) onMatchUpdated(updatedMatch);
+            router.refresh();
           }}
         />
       )}

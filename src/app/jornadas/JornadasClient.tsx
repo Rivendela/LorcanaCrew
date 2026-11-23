@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { League, Match, Round, User } from '@/types';
 import { MatchCard } from '@/components/MatchCard';
 import { Calendar, Clock, CheckCircle2, ChevronLeft, ChevronRight, Rocket, ShieldAlert, AlertTriangle } from 'lucide-react';
@@ -25,10 +25,15 @@ export function JornadasClient({
 }: JornadasClientProps) {
   const router = useRouter();
   const isAdmin = currentUser?.role === 'admin';
+  const [matches, setMatches] = useState<Match[]>(initialMatches);
   const [selectedRoundNumber, setSelectedRoundNumber] = useState<number>(() => {
     const current = rounds.find((r) => r.isCurrent);
     return current ? current.roundNumber : (rounds[0]?.roundNumber || 1);
   });
+
+  useEffect(() => {
+    setMatches(initialMatches);
+  }, [initialMatches]);
 
   const [filterMode, setFilterMode] = useState<'all' | 'mine' | 'pending'>('all');
   const [launching, setLaunching] = useState(false);
@@ -37,7 +42,7 @@ export function JornadasClient({
   const playerMap = new Map<string, User>(players.map((p) => [p.id, p]));
   const currentRound = rounds.find((r) => r.roundNumber === selectedRoundNumber) || rounds[0];
 
-  const roundMatches = initialMatches.filter((m) => m.roundNumber === selectedRoundNumber);
+  const roundMatches = matches.filter((m) => m.roundNumber === selectedRoundNumber);
 
   const filteredMatches = roundMatches.filter((m) => {
     if (filterMode === 'mine') {
@@ -55,8 +60,13 @@ export function JornadasClient({
 
   // Previous round check: only count real matches between players (not BYEs)
   const prevRound = selectedRoundNumber > 1 ? rounds.find((r) => r.roundNumber === selectedRoundNumber - 1) : null;
-  const prevRoundMatches = prevRound ? initialMatches.filter((m) => m.roundNumber === prevRound.roundNumber) : [];
+  const prevRoundMatches = prevRound ? matches.filter((m) => m.roundNumber === prevRound.roundNumber) : [];
   const prevRoundPending = prevRoundMatches.filter((m) => m.status === 'pending' && m.player2Id && !m.isBye).length;
+
+  const handleMatchUpdated = (updatedMatch: Match) => {
+    setMatches((prev) => prev.map((m) => (m.id === updatedMatch.id ? updatedMatch : m)));
+    router.refresh();
+  };
 
   const handleLaunchRound = async (roundId: string) => {
     if (prevRoundPending > 0) {
@@ -120,33 +130,30 @@ export function JornadasClient({
         <div className="flex items-center gap-1.5 bg-slate-900/80 border border-slate-800 p-1 rounded-xl self-start sm:self-auto">
           <button
             onClick={() => setFilterMode('all')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
-              filterMode === 'all'
-                ? 'bg-amber-500 text-slate-950 font-bold'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${filterMode === 'all'
+              ? 'bg-amber-500 text-slate-950 font-bold'
+              : 'text-slate-400 hover:text-slate-200'
+              }`}
           >
             Todos ({roundMatches.length})
           </button>
           {currentUser && (
             <button
               onClick={() => setFilterMode('mine')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
-                filterMode === 'mine'
-                  ? 'bg-amber-500 text-slate-950 font-bold'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${filterMode === 'mine'
+                ? 'bg-amber-500 text-slate-950 font-bold'
+                : 'text-slate-400 hover:text-slate-200'
+                }`}
             >
               Mis Partidos
             </button>
           )}
           <button
             onClick={() => setFilterMode('pending')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
-              filterMode === 'pending'
-                ? 'bg-amber-500 text-slate-950 font-bold'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${filterMode === 'pending'
+              ? 'bg-amber-500 text-slate-950 font-bold'
+              : 'text-slate-400 hover:text-slate-200'
+              }`}
           >
             Pendientes ({roundMatches.filter((m) => m.status === 'pending').length})
           </button>
@@ -209,30 +216,28 @@ export function JornadasClient({
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
           {rounds.map((r) => {
             const isSelected = r.roundNumber === selectedRoundNumber;
-            const matchesOfThisRound = initialMatches.filter((m) => m.roundNumber === r.roundNumber);
+            const matchesOfThisRound = matches.filter((m) => m.roundNumber === r.roundNumber);
             const finished = matchesOfThisRound.every((m) => m.status === 'completed');
 
             return (
               <button
                 key={r.id}
                 onClick={() => setSelectedRoundNumber(r.roundNumber)}
-                className={`flex flex-col items-center justify-center px-4 py-2 rounded-xl text-xs font-bold shrink-0 transition-all border ${
-                  isSelected
-                    ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-md shadow-amber-500/20 scale-[1.03]'
-                    : 'bg-slate-950/60 hover:bg-slate-800 text-slate-300 border-slate-800/80'
-                }`}
+                className={`flex flex-col items-center justify-center px-4 py-2 rounded-xl text-xs font-bold shrink-0 transition-all border ${isSelected
+                  ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-md shadow-amber-500/20 scale-[1.03]'
+                  : 'bg-slate-950/60 hover:bg-slate-800 text-slate-300 border-slate-800/80'
+                  }`}
               >
                 <span>Jornada {r.roundNumber}</span>
                 <span
-                  className={`text-[10px] font-mono mt-0.5 ${
-                    isSelected
-                      ? 'text-slate-900 font-semibold'
-                      : finished
+                  className={`text-[10px] font-mono mt-0.5 ${isSelected
+                    ? 'text-slate-900 font-semibold'
+                    : finished
                       ? 'text-emerald-400'
                       : r.isCurrent
-                      ? 'text-amber-400 font-semibold'
-                      : 'text-slate-500'
-                  }`}
+                        ? 'text-amber-400 font-semibold'
+                        : 'text-slate-500'
+                    }`}
                 >
                   {finished ? '✓ Finalizada' : r.isCurrent ? '● Activa' : 'Próxima'}
                 </span>
@@ -306,7 +311,7 @@ export function JornadasClient({
                 player1={p1}
                 player2={p2 || null}
                 currentUser={currentUser}
-                onMatchUpdated={() => router.refresh()}
+                onMatchUpdated={handleMatchUpdated}
               />
             );
           })}
