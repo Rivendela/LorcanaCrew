@@ -45,6 +45,7 @@ export function DualInkBadge({
   secondary,
   visibility = 'public',
   isOwnerOrAdmin = false,
+  showLabel = false,
   size = 'sm',
   className = '',
 }: {
@@ -52,6 +53,7 @@ export function DualInkBadge({
   secondary?: InkType;
   visibility?: 'public' | 'private';
   isOwnerOrAdmin?: boolean;
+  showLabel?: boolean;
   size?: 'sm' | 'md';
   className?: string;
 }) {
@@ -61,32 +63,32 @@ export function DualInkBadge({
   if (visibility === 'private' && !isOwnerOrAdmin) {
     return (
       <span
-        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-950/70 border border-slate-800 text-slate-400 select-none shrink-0 ${className}`}
-        title="Este jugador mantiene sus colores en secreto"
+        className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-slate-950/70 border border-slate-800 text-slate-400 select-none shrink-0 ${className}`}
+        title="Colores ocultos por el jugador"
       >
         <Lock className="w-2.5 h-2.5 text-amber-400/90 shrink-0" />
-        <span className="text-[10px] text-slate-300">Oculto</span>
       </span>
     );
   }
 
   const info1 = primary ? LORCANA_INKS[primary] : null;
   const info2 = secondary && secondary !== primary ? LORCANA_INKS[secondary] : null;
+  const dotSize = size === 'md' ? 'w-3 h-3' : 'w-2.5 h-2.5';
 
   // Single ink
   if (!info2 && info1) {
     return (
       <div className={`inline-flex items-center select-none shrink-0 ${className}`}>
         <span
-          className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-slate-950/80 border text-[10px] sm:text-[11px] font-semibold tracking-tight shadow-sm"
-          style={{ borderColor: `${info1.color}45`, backgroundColor: `${info1.color}12` }}
+          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-slate-950/90 border border-slate-800 shadow-sm hover:border-slate-700 transition-colors"
+          style={{ borderColor: `${info1.color}40`, backgroundColor: `${info1.color}10` }}
           title={`${info1.label}: ${info1.description}`}
         >
           <span
-            className="w-2 h-2 rounded-full shrink-0"
-            style={{ backgroundColor: info1.color, boxShadow: `0 0 5px ${info1.color}` }}
+            className={`${dotSize} rounded-full shrink-0`}
+            style={{ backgroundColor: info1.color, boxShadow: `0 0 6px ${info1.color}90` }}
           />
-          <span style={{ color: info1.color }}>{info1.label}</span>
+          {showLabel && <span className="text-[10px] font-semibold" style={{ color: info1.color }}>{info1.label}</span>}
           {visibility === 'private' && isOwnerOrAdmin && (
             <span title="Solo tú y el admin podéis ver esto">
               <Lock className="w-2.5 h-2.5 text-amber-400/80 ml-0.5 shrink-0" />
@@ -101,15 +103,15 @@ export function DualInkBadge({
     return (
       <div className={`inline-flex items-center select-none shrink-0 ${className}`}>
         <span
-          className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-slate-950/80 border text-[10px] sm:text-[11px] font-semibold tracking-tight shadow-sm"
-          style={{ borderColor: `${info2.color}45`, backgroundColor: `${info2.color}12` }}
+          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-slate-950/90 border border-slate-800 shadow-sm hover:border-slate-700 transition-colors"
+          style={{ borderColor: `${info2.color}40`, backgroundColor: `${info2.color}10` }}
           title={`${info2.label}: ${info2.description}`}
         >
           <span
-            className="w-2 h-2 rounded-full shrink-0"
-            style={{ backgroundColor: info2.color, boxShadow: `0 0 5px ${info2.color}` }}
+            className={`${dotSize} rounded-full shrink-0`}
+            style={{ backgroundColor: info2.color, boxShadow: `0 0 6px ${info2.color}90` }}
           />
-          <span style={{ color: info2.color }}>{info2.label}</span>
+          {showLabel && <span className="text-[10px] font-semibold" style={{ color: info2.color }}>{info2.label}</span>}
         </span>
       </div>
     );
@@ -117,24 +119,26 @@ export function DualInkBadge({
 
   if (!info1 || !info2) return null;
 
-  // Dual inks: sleek unified pill with overlapping glowing gems and colored labels
+  // Dual inks: sleek unified pill with overlapping glowing gems
   return (
     <div className={`inline-flex items-center select-none shrink-0 ${className}`}>
       <span
-        className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-slate-950/90 border border-slate-800 shadow-sm hover:border-slate-700 transition-colors max-w-full"
+        className={`inline-flex items-center rounded-full bg-slate-950/90 border border-slate-800/90 shadow-sm hover:border-slate-700 transition-colors ${
+          showLabel ? 'gap-1.5 px-2.5 py-0.5' : 'gap-1 px-1.5 py-0.5'
+        }`}
         title={`${info1.label} & ${info2.label}`}
       >
         {/* Two glowing ink crystals overlapping */}
         <span className="flex items-center -space-x-1 shrink-0">
           <span
-            className="w-2.5 h-2.5 rounded-full ring-1 ring-slate-950 shrink-0"
+            className={`${dotSize} rounded-full ring-1 ring-slate-950 shrink-0`}
             style={{
               backgroundColor: info1.color,
               boxShadow: `0 0 6px ${info1.color}90`,
             }}
           />
           <span
-            className="w-2.5 h-2.5 rounded-full ring-1 ring-slate-950 shrink-0"
+            className={`${dotSize} rounded-full ring-1 ring-slate-950 shrink-0`}
             style={{
               backgroundColor: info2.color,
               boxShadow: `0 0 6px ${info2.color}90`,
@@ -142,12 +146,13 @@ export function DualInkBadge({
           />
         </span>
 
-        {/* Compact typography with respective ink colors */}
-        <span className="text-[10px] sm:text-[11px] font-semibold tracking-tight flex items-center gap-1 truncate">
-          <span style={{ color: info1.color }}>{info1.label}</span>
-          <span className="text-slate-600 font-bold text-[9px]">/</span>
-          <span style={{ color: info2.color }}>{info2.label}</span>
-        </span>
+        {showLabel && (
+          <span className="text-[10px] sm:text-[11px] font-semibold tracking-tight flex items-center gap-1 truncate">
+            <span style={{ color: info1.color }}>{info1.label}</span>
+            <span className="text-slate-600 font-bold text-[9px]">/</span>
+            <span style={{ color: info2.color }}>{info2.label}</span>
+          </span>
+        )}
 
         {visibility === 'private' && isOwnerOrAdmin && (
           <span title="Solo tú y el admin podéis ver esto">
