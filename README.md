@@ -175,15 +175,39 @@ Si es la primera vez que subes el proyecto a tu cuenta de Git:
 
 ---
 
-## ☁️ Despliegue en Vercel
+## ☁️ Despliegue en Vercel & Persistencia Permanente (Opción 1)
 
-El proyecto está preparado para desplegarse en [Vercel](https://vercel.com/) con **cero configuración adicional**:
+En Vercel las funciones son *serverless* (efímeras). Para que tus datos de jugadores, jornadas y resultados **no se borren jamás aunque hagas nuevos despliegues**, la aplicación incluye soporte nativo híbrido con **Vercel KV / Upstash Redis** (100% gratuito):
 
-1. Entra en tu panel de Vercel e importa el repositorio de GitHub.
-2. Vercel detectará automáticamente **Next.js**.
-3. (Opcional) En la sección **Environment Variables**, añade `JWT_SECRET` con un valor seguro.
-4. Pulsa en **Deploy**.
-5. ¡Listo! Tu liga estará en línea con HTTPS y accesible para todo el grupo de amigos.
+### Pasos para activar la persistencia en Vercel (1 minuto):
+
+1. **Importar el proyecto en Vercel:**
+   * Conecta tu cuenta de GitHub/GitLab e importa el repositorio `LIGA_LORCANA`.
+2. **Crear la base de datos en la nube (Vercel KV o Upstash):**
+   * **Opción A (Directamente en Vercel):** En el panel de tu proyecto en Vercel, ve a la pestaña **Storage** -> Pulsa en **Create Database** -> Selecciona **KV**.
+   * **Opción B (Upstash Redis gratuito):** Crea una base de datos Redis gratuita en [upstash.com](https://upstash.com/) y copia la URL y Token REST.
+3. **Variables de Entorno:**
+   * Si usas Vercel KV, Vercel inyecta automáticamente las variables:
+     * `KV_REST_API_URL`
+     * `KV_REST_API_TOKEN`
+   * Si usas Upstash directamente, añade en **Settings -> Environment Variables** de Vercel:
+     * `UPSTASH_REDIS_REST_URL` = tu url de Upstash
+     * `UPSTASH_REDIS_REST_TOKEN` = tu token de Upstash
+     * `JWT_SECRET` = una clave secreta segura (opcional)
+4. **Desplegar:**
+   * Pulsa en **Deploy**.
+   * ¡Listo! La app detectará automáticamente las variables de la nube y guardará todos los datos en ella.
+   * La primera vez que arranque, migrará automáticamente los usuarios iniciales del archivo `database.json`.
+   * A partir de ese momento, da igual cuántos cambios de código hagas o cuántas veces resubas la web a Vercel: **tus jugadores, partidos y clasificaciones estarán siempre a salvo**.
+
+---
+
+## 💾 Sistema de Backups Manuales (Panel de Comisionado)
+
+Incluso con la base de datos en la nube, el Comisionado dispone en `/admin` de:
+* **Descarga de Backup JSON:** Para tener copias locales en tu propio disco duro cuando quieras.
+* **Restauración de Backup:** Cargar cualquier archivo `.json` previo para recuperar la liga de inmediato.
+* **Auto-backup semanal:** Se genera una copia interna en `data/backups/` cada vez que se finaliza y cierra una jornada.
 
 ---
 

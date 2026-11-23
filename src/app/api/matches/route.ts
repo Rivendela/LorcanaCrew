@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'En formato Bo3 las partidas ganadas deben ser entre 0 y 2' }, { status: 400 });
     }
 
-    const db = getDatabase();
+    const db = await getDatabase();
     const match = db.matches.find((m) => m.id === matchId);
     if (!match) {
       return NextResponse.json({ error: 'Partido no encontrado' }, { status: 404 });

@@ -9,9 +9,16 @@ const DB_FILE = path.join(DATA_DIR, 'database.json');
 const REPO_SEED_FILE = path.join(process.cwd(), 'data', 'database.json');
 const BACKUP_DIR = path.join(DATA_DIR, 'backups');
 
+// Cloud KV & Redis configuration (Vercel KV or Upstash)
+const KV_URL = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
+const KV_TOKEN = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
+const KV_KEY = 'ccrew_lorcana_database';
+
 // Memory cache with mtime check for instant reads and perfect cache-invalidation
 let cachedDb: DatabaseSchema | null = null;
 let lastMtimeMs = 0;
+let lastCloudFetchTime = 0;
+const CLOUD_CACHE_TTL_MS = 3000; // 3 seconds in-memory cache to avoid duplicate calls in same SSR turn
 
 function ensureDirectoryExists() {
   if (!fs.existsSync(DATA_DIR)) {
@@ -46,9 +53,49 @@ function getInitialSeedData(): DatabaseSchema {
   };
 }
 
-export function getDatabase(): DatabaseSchema {
-  ensureDirectoryExists();
+// Cloud KV helpers (Upstash / Vercel KV REST API)
+async function fetchFromCloudKV(): Promise<DatabaseSchema | null> {
+  if (!KV_URL || !KV_TOKEN) return null;
+  try {
+    const res = await fetch(`${KV_URL}/get/${KV_KEY}`, {
+      headers: { Authorization: `Bearer ${KV_TOKEN}` },
+      cache: 'no-store',
+    });
+    if (!res.ok) return null;
+    const json = await res.json();
+    if (!json || json.result === null || json.result === undefined) return null;
 
+    const parsed = typeof json.result === 'string' ? JSON.parse(json.result) : json.result;
+    if (parsed && Array.isArray(parsed.users)) {
+      return parsed as DatabaseSchema;
+    }
+    return null;
+  } catch (err) {
+    console.error('Error fetching from Cloud KV:', err);
+    return null;
+  }
+}
+
+async function saveToCloudKV(data: DatabaseSchema): Promise<boolean> {
+  if (!KV_URL || !KV_TOKEN) return false;
+  try {
+    const res = await fetch(`${KV_URL}/set/${KV_KEY}`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${KV_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(data),
+      cache: 'no-store',
+    });
+    return res.ok;
+  } catch (err) {
+    console.error('Error saving to Cloud KV:', err);
+    return false;
+  }
+}
+
+function getLocalOrSeedData(): DatabaseSchema {
   if (!fs.existsSync(DB_FILE)) {
     if (isVercel && fs.existsSync(REPO_SEED_FILE)) {
       try {
@@ -85,9 +132,46 @@ export function getDatabase(): DatabaseSchema {
   }
 }
 
+export async function getDatabase(): Promise<DatabaseSchema> {
+  ensureDirectoryExists();
+
+  // 1. If Cloud KV (Vercel KV / Upstash) is configured:
+  if (KV_URL && KV_TOKEN) {
+    if (cachedDb && Date.now() - lastCloudFetchTime < CLOUD_CACHE_TTL_MS) {
+      return cachedDb;
+    }
+
+    const cloudData = await fetchFromCloudKV();
+    if (cloudData) {
+      cachedDb = cloudData;
+      lastCloudFetchTime = Date.now();
+      saveDatabaseSync(cloudData);
+      return cloudData;
+    }
+
+    // First time Cloud KV setup: Seed KV with initial data from database.json
+    const initialData = getLocalOrSeedData();
+    await saveToCloudKV(initialData);
+    cachedDb = initialData;
+    lastCloudFetchTime = Date.now();
+    return initialData;
+  }
+
+  // 2. Local fallback (File-based storage with mtime check)
+  return getLocalOrSeedData();
+}
+
 export async function saveDatabase(data: DatabaseSchema): Promise<void> {
   ensureDirectoryExists();
   cachedDb = data;
+  lastCloudFetchTime = Date.now();
+
+  // 1. Save to Cloud KV if configured
+  if (KV_URL && KV_TOKEN) {
+    await saveToCloudKV(data);
+  }
+
+  // 2. Always persist locally or to /tmp
   const tempFile = `${DB_FILE}.${Date.now()}.tmp`;
   await fs.promises.writeFile(tempFile, JSON.stringify(data, null, 2), 'utf-8');
   await fs.promises.rename(tempFile, DB_FILE);
@@ -109,7 +193,8 @@ function saveDatabaseSync(data: DatabaseSchema): void {
 
 // Convenience accessors
 export async function getUsers(): Promise<User[]> {
-  return getDatabase().users;
+  const db = await getDatabase();
+  return db.users;
 }
 
 export async function getUserByUsername(username: string): Promise<User | undefined> {
@@ -123,14 +208,14 @@ export async function getUserById(id: string): Promise<User | undefined> {
 }
 
 export async function createUser(user: User): Promise<User> {
-  const db = getDatabase();
+  const db = await getDatabase();
   db.users.push(user);
   await saveDatabase(db);
   return user;
 }
 
 export async function updateUser(id: string, updates: Partial<User>): Promise<User | null> {
-  const db = getDatabase();
+  const db = await getDatabase();
   const index = db.users.findIndex((u) => u.id === id);
   if (index === -1) return null;
   db.users[index] = { ...db.users[index], ...updates };
@@ -139,17 +224,17 @@ export async function updateUser(id: string, updates: Partial<User>): Promise<Us
 }
 
 export async function getActiveLeague(): Promise<League | undefined> {
-  const db = getDatabase();
+  const db = await getDatabase();
   return db.leagues.find((l) => l.status === 'active') || db.leagues[0];
 }
 
 export async function getRounds(leagueId: string): Promise<Round[]> {
-  const db = getDatabase();
+  const db = await getDatabase();
   return db.rounds.filter((r) => r.leagueId === leagueId).sort((a, b) => a.roundNumber - b.roundNumber);
 }
 
 export async function getMatches(leagueId: string, roundId?: string): Promise<Match[]> {
-  const db = getDatabase();
+  const db = await getDatabase();
   return db.matches.filter(
     (m) => m.leagueId === leagueId && (!roundId || m.roundId === roundId)
   );
@@ -162,7 +247,7 @@ export async function updateMatchResult(
   reportedByUserId: string,
   notes?: string
 ): Promise<Match | null> {
-  const db = getDatabase();
+  const db = await getDatabase();
   const match = db.matches.find((m) => m.id === matchId);
   if (!match) return null;
 
@@ -178,7 +263,7 @@ export async function updateMatchResult(
 }
 
 export async function launchRound(leagueId: string, roundId: string): Promise<Round | null> {
-  const db = getDatabase();
+  const db = await getDatabase();
   const league = db.leagues.find((l) => l.id === leagueId);
   const targetRound = db.rounds.find((r) => r.id === roundId && r.leagueId === leagueId);
   if (!targetRound || !league) return null;
@@ -211,7 +296,7 @@ export async function createNewLeague(
   format: import('@/types').LeagueFormat = 'porcana',
   startDate: Date = new Date()
 ): Promise<League> {
-  const db = getDatabase();
+  const db = await getDatabase();
   const leagueId = `league-${Date.now()}`;
 
   const { rounds, matches } = generateRoundRobinSchedule(leagueId, playerIds, startDate);
@@ -246,7 +331,7 @@ export async function createNewLeague(
 }
 
 export async function deleteUser(id: string): Promise<boolean> {
-  const db = getDatabase();
+  const db = await getDatabase();
   const initialLength = db.users.length;
   // Never allow deleting the primary admin
   db.users = db.users.filter((u) => u.id !== id || u.username === 'admin');
@@ -268,7 +353,7 @@ export async function adminUpdateMatch(
   status: import('@/types').MatchStatus = 'completed',
   notes?: string
 ): Promise<Match | null> {
-  const db = getDatabase();
+  const db = await getDatabase();
   const match = db.matches.find((m) => m.id === matchId);
   if (!match) return null;
 
@@ -288,7 +373,7 @@ export async function updateRound(
   roundId: string,
   updates: Partial<Round>
 ): Promise<Round | null> {
-  const db = getDatabase();
+  const db = await getDatabase();
   const round = db.rounds.find((r) => r.id === roundId);
   if (!round) return null;
 
@@ -298,7 +383,7 @@ export async function updateRound(
 }
 
 export async function closeRound(leagueId: string, roundId: string): Promise<Round | null> {
-  const db = getDatabase();
+  const db = await getDatabase();
   const round = db.rounds.find((r) => r.id === roundId && r.leagueId === leagueId);
   if (!round) return null;
 
@@ -314,7 +399,7 @@ export async function closeRound(leagueId: string, roundId: string): Promise<Rou
 }
 
 export async function resetCurrentLeague(): Promise<boolean> {
-  const db = getDatabase();
+  const db = await getDatabase();
   db.leagues = [];
   db.rounds = [];
   db.matches = [];
@@ -325,7 +410,7 @@ export async function resetCurrentLeague(): Promise<boolean> {
 // Backup system
 export async function createBackup(label: string = 'manual'): Promise<import('@/types').BackupInfo> {
   ensureDirectoryExists();
-  const db = getDatabase();
+  const db = await getDatabase();
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
   const filename = `backup_${timestamp}.json`;
   const filePath = path.join(BACKUP_DIR, filename);

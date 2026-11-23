@@ -17,7 +17,6 @@ export async function GET() {
     }
 
     const league = await getActiveLeague();
-    const db = getDatabase();
     const allMatches = league ? await getMatches(league.id) : [];
 
     // Filter user matches

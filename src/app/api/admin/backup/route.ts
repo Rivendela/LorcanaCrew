@@ -13,7 +13,7 @@ export async function GET(req: NextRequest) {
     const download = searchParams.get('download');
 
     if (download) {
-      const db = getDatabase();
+      const db = await getDatabase();
       return new NextResponse(JSON.stringify(db, null, 2), {
         status: 200,
         headers: {
