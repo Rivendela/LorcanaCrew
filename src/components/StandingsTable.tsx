@@ -322,9 +322,8 @@ export function StandingsTable({ standings, currentUserId, currentUserRole }: St
           <span>•</span>
           <span><strong className="text-slate-300 font-mono">GF/GC:</strong> Games +/-</span>
           <span>•</span>
-          <span><strong className="text-slate-300 font-mono">+/-:</strong> Diferencia</span>
+          <span><strong className="text-slate-300 font-mono">{'+/-:'}</strong> Diferencia</span>
         </div>
-      </div>
       </div>
     </div>
   );
