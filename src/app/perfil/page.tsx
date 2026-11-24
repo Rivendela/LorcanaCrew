@@ -70,6 +70,7 @@ export default function PerfilPage() {
   const [inksVisibility, setInksVisibility] = useState<'public' | 'private'>('public');
   const [bio, setBio] = useState('');
   const [favoriteCard, setFavoriteCard] = useState('');
+  const [newPassword, setNewPassword] = useState('');
 
   useEffect(() => {
     fetch('/api/profile')
@@ -118,6 +119,7 @@ export default function PerfilPage() {
           inksVisibility,
           bio,
           favoriteCard,
+          ...(newPassword.trim() ? { newPassword: newPassword.trim() } : {}),
         }),
       });
 
@@ -127,6 +129,7 @@ export default function PerfilPage() {
       }
 
       setMessage({ type: 'success', text: '¡Perfil actualizado correctamente!' });
+      setNewPassword('');
       if (profile) {
         setProfile({
           ...profile,
@@ -447,6 +450,30 @@ export default function PerfilPage() {
                   onChange={(e) => setBio(e.target.value)}
                   className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950/80 border border-slate-800 focus:border-amber-500 text-white text-sm outline-none placeholder:text-slate-600 resize-none"
                 />
+              </div>
+            </div>
+
+            {/* Security / Password Card */}
+            <div className="bg-slate-900/60 border border-amber-500/20 rounded-3xl p-6 shadow-xl space-y-4">
+              <h2 className="text-base font-bold text-white flex items-center gap-2 border-b border-slate-800 pb-3">
+                <Lock className="w-4 h-4 text-amber-400" />
+                <span>Seguridad de Acceso</span>
+              </h2>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                  Cambiar Contraseña
+                </label>
+                <input
+                  type="password"
+                  placeholder="Dejar en blanco para conservar la actual"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950/80 border border-slate-800 focus:border-amber-500 text-white text-sm outline-none placeholder:text-slate-600"
+                />
+                <p className="text-[11px] text-slate-500 mt-1">
+                  Mínimo 4 caracteres. Si no deseas cambiarla, déjalo vacío.
+                </p>
               </div>
             </div>
 

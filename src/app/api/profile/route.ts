@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCurrentUser } from '@/lib/auth';
+import { getCurrentUser, hashPassword } from '@/lib/auth';
 import { getActiveLeague, getDatabase, getMatches, getRounds, getUserById, updateUser } from '@/lib/db';
 import { calculateStandings } from '@/lib/league-engine';
 import { User } from '@/types';
@@ -104,7 +104,7 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
     }
 
-    const { name, avatar, primaryInk, secondaryInk, inksVisibility, bio, favoriteCard } = await req.json();
+    const { name, avatar, primaryInk, secondaryInk, inksVisibility, bio, favoriteCard, newPassword } = await req.json();
 
     const updates: Partial<User> = {};
     if (name && name.trim()) updates.name = name.trim();
@@ -116,6 +116,12 @@ export async function PUT(req: NextRequest) {
     }
     if (bio !== undefined) updates.bio = bio.trim();
     if (favoriteCard !== undefined) updates.favoriteCard = favoriteCard.trim();
+    if (newPassword && newPassword.trim()) {
+      if (newPassword.trim().length < 4) {
+        return NextResponse.json({ error: 'La contraseña debe tener al menos 4 caracteres' }, { status: 400 });
+      }
+      updates.passwordHash = await hashPassword(newPassword.trim());
+    }
 
     const updated = await updateUser(session.userId, updates);
     if (!updated) {

@@ -34,8 +34,13 @@ export default async function JornadasPage() {
   const isAdmin = currentUser?.role === 'admin';
 
   // Non-admins only see completed rounds and the current active round. Future rounds are admin-only.
-  const activeRound = allRounds.find((r) => r.isCurrent || r.status === 'active') || allRounds[0];
-  const maxAllowedRound = activeRound ? activeRound.roundNumber : 1;
+  const activeRound = allRounds.find((r) => r.isCurrent || r.status === 'active');
+  const completedRounds = allRounds.filter((r) => r.status === 'completed');
+  const maxCompletedRoundNumber = completedRounds.length > 0
+    ? Math.max(...completedRounds.map((r) => r.roundNumber))
+    : 1;
+
+  const maxAllowedRound = activeRound ? activeRound.roundNumber : maxCompletedRoundNumber;
 
   const visibleRounds = isAdmin
     ? allRounds

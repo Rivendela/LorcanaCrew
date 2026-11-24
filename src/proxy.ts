@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { PIN_COOKIE_NAME } from './lib/constants';
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Always allow Next.js internals, static files, and the PIN verification routes

@@ -28,7 +28,7 @@ export function JornadasClient({
   const [matches, setMatches] = useState<Match[]>(initialMatches);
   const [selectedRoundNumber, setSelectedRoundNumber] = useState<number>(() => {
     const current = rounds.find((r) => r.isCurrent);
-    return current ? current.roundNumber : (rounds[0]?.roundNumber || 1);
+    return current ? current.roundNumber : (rounds[rounds.length - 1]?.roundNumber || 1);
   });
 
   useEffect(() => {
