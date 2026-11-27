@@ -140,7 +140,37 @@ export interface SwissStanding {
   gamesLost: number;
   gameDiff: number;
   points: number;
-  buchholz: number; // Sum of opponents' points (desempate)
+  matchWinRate: number; // MW% del jugador
+  gameWinRate: number; // GW% del jugador
+  omwRate: number; // Opponents' Match Win % (Criterio #1 oficial Lorcana)
+  ogwRate: number; // Opponents' Game Win % (Criterio #3 oficial Lorcana)
+  buchholz: number; // Suma de puntos de rivales
+}
+
+export interface DeckMetaStats {
+  id: string; // e.g. "Amethyst/Ruby"
+  name: string; // e.g. "Amatista / Rubí"
+  primaryInk: InkType;
+  secondaryInk?: InkType;
+  totalMatches: number;
+  totalWins: number;
+  totalLosses: number;
+  totalDraws: number;
+  winRate: number;
+  metaShare: number; // % del total de mazos
+  leagueMatches: number;
+  leagueWins: number;
+  leagueLosses: number;
+  tournamentMatches: number;
+  tournamentWins: number;
+  tournamentLosses: number;
+  pilots: {
+    id: string;
+    name: string;
+    avatar?: string;
+    matches: number;
+    wins: number;
+  }[];
 }
 
 export interface Tournament {

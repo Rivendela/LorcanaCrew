@@ -260,7 +260,7 @@ export default function ComoSeUsaPage() {
                 <span>🛡️ 2. Sistema Suizo (Swiss Tournament)</span>
               </div>
               <p className="text-slate-400 text-xs leading-relaxed">
-                El formato rey de los TCGs: <strong>¡nadie queda eliminado!</strong> Se juegan varias rondas donde los ganadores juegan contra ganadores y los que tienen derrotas contra rivales con similar récord. El primer clasificado por puntos y desempate Buchholz gana el torneo.
+                El formato rey de los TCGs: <strong>¡nadie queda eliminado!</strong> Se juegan varias rondas donde los jugadores con similar puntuación se enfrentan entre sí sin repetir rivales. El orden se calcula mediante los criterios oficiales de Disney Lorcana (Ravensburger / Melee.gg): <strong>Puntos (PTS) &gt; OMW% (% Victoria Rivales) &gt; GW% (% Juegos) &gt; OGW% (% Juegos Rivales) &gt; +/- Diferencial</strong>.
               </p>
             </div>
           </div>

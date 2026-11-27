@@ -15,9 +15,15 @@ import {
   Rocket,
   Shield,
   AlertCircle,
+  AlertTriangle,
   X,
   Palette,
   ChevronRight,
+  SlidersHorizontal,
+  RefreshCw,
+  ArrowLeftRight,
+  Plus,
+  Trash2,
 } from 'lucide-react';
 import { ALL_INKS, LORCANA_INKS } from '@/lib/constants';
 
@@ -54,6 +60,15 @@ export function TournamentSwissView({
   const [saving, setSaving] = useState(false);
   const [advancing, setAdvancing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Pairing Editor State (Admin only)
+  const [editingPairingsModal, setEditingPairingsModal] = useState<boolean>(false);
+  const [pairingsDraft, setPairingsDraft] = useState<
+    Array<{ matchIndex: number; player1Id: string; player2Id: string | null }>
+  >([]);
+  const [repairing, setRepairing] = useState<boolean>(false);
+  const [savingPairings, setSavingPairings] = useState<boolean>(false);
+  const [pairingsError, setPairingsError] = useState<string | null>(null);
 
   // Live Swiss Standings
   const standings: SwissStanding[] = calculateSwissStandings(
@@ -158,6 +173,162 @@ export function TournamentSwissView({
       alert(err.message || 'Error al avanzar ronda');
     } finally {
       setAdvancing(false);
+    }
+  };
+
+  const handleOpenPairingModal = () => {
+    const draft = roundMatches.map((m, idx) => ({
+      matchIndex: m.matchIndex ?? idx,
+      player1Id: m.player1Id || tournament.playerIds[0] || '',
+      player2Id: m.player2Id || null,
+    }));
+
+    if (draft.length === 0) {
+      for (let i = 0; i < tournament.playerIds.length; i += 2) {
+        draft.push({
+          matchIndex: Math.floor(i / 2),
+          player1Id: tournament.playerIds[i],
+          player2Id: tournament.playerIds[i + 1] || null,
+        });
+      }
+    }
+
+    setPairingsDraft(draft);
+    setPairingsError(null);
+    setEditingPairingsModal(true);
+  };
+
+  const updateDraftPlayer1 = (index: number, newPlayerId: string) => {
+    setPairingsDraft((prev) =>
+      prev.map((item, idx) => (idx === index ? { ...item, player1Id: newPlayerId } : item))
+    );
+  };
+
+  const updateDraftPlayer2 = (index: number, newPlayerId: string) => {
+    const val = newPlayerId === '__BYE__' ? null : newPlayerId;
+    setPairingsDraft((prev) =>
+      prev.map((item, idx) => (idx === index ? { ...item, player2Id: val } : item))
+    );
+  };
+
+  const swapMatchPlayers = (index: number) => {
+    setPairingsDraft((prev) =>
+      prev.map((item, idx) => {
+        if (idx !== index) return item;
+        return {
+          ...item,
+          player1Id: item.player2Id || item.player1Id,
+          player2Id: item.player2Id ? item.player1Id : null,
+        };
+      })
+    );
+  };
+
+  const addTableToDraft = () => {
+    const assigned = new Set(
+      pairingsDraft.flatMap((p) => [p.player1Id, p.player2Id]).filter(Boolean) as string[]
+    );
+    const unassigned = tournament.playerIds.filter((id) => !assigned.has(id));
+
+    setPairingsDraft((prev) => [
+      ...prev,
+      {
+        matchIndex: prev.length,
+        player1Id: unassigned[0] || tournament.playerIds[0] || '',
+        player2Id: unassigned[1] || null,
+      },
+    ]);
+  };
+
+  const removeTableFromDraft = (index: number) => {
+    if (pairingsDraft.length <= 1) return;
+    setPairingsDraft((prev) =>
+      prev.filter((_, idx) => idx !== index).map((p, idx) => ({ ...p, matchIndex: idx }))
+    );
+  };
+
+  const handleRepairRound = async (roundNum: number) => {
+    const confirmMsg =
+      `¿Reemparejar automáticamente la Ronda ${roundNum} del Sistema Suizo?\n\n` +
+      `Se recalcularán los emparejamientos suizos según los resultados de las rondas anteriores y se resetearán los resultados de esta ronda.`;
+
+    if (!confirm(confirmMsg)) return;
+
+    setRepairing(true);
+    try {
+      const res = await fetch('/api/tournaments/match', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tournamentId: tournament.id,
+          action: 'repair_swiss_round',
+          roundNumber: roundNum,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Error al reemparejar ronda');
+
+      setEditingPairingsModal(false);
+      if (onRefresh) onRefresh();
+      else window.location.reload();
+    } catch (err: any) {
+      alert(err.message || 'Error al reemparejar');
+    } finally {
+      setRepairing(false);
+    }
+  };
+
+  const handleSavePairings = async () => {
+    const assigned = new Set<string>();
+    for (let i = 0; i < pairingsDraft.length; i++) {
+      const p = pairingsDraft[i];
+      if (!p.player1Id) {
+        setPairingsError(`La Mesa ${i + 1} no tiene Jugador 1 seleccionado.`);
+        return;
+      }
+      if (assigned.has(p.player1Id)) {
+        const name = playerMap.get(p.player1Id)?.name || p.player1Id;
+        setPairingsError(`El jugador "${name}" está repetido en más de una mesa.`);
+        return;
+      }
+      assigned.add(p.player1Id);
+
+      if (p.player2Id) {
+        if (assigned.has(p.player2Id)) {
+          const name = playerMap.get(p.player2Id)?.name || p.player2Id;
+          setPairingsError(`El jugador "${name}" está repetido en más de una mesa.`);
+          return;
+        }
+        assigned.add(p.player2Id);
+      }
+    }
+
+    setSavingPairings(true);
+    setPairingsError(null);
+
+    try {
+      const res = await fetch('/api/tournaments/match', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tournamentId: tournament.id,
+          action: 'update_swiss_pairings',
+          roundNumber: selectedRound,
+          pairings: pairingsDraft,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Error al guardar emparejamientos');
+
+      setEditingPairingsModal(false);
+      if (onRefresh) onRefresh();
+      else window.location.reload();
+    } catch (err: any) {
+      setPairingsError(err.message || 'Error al guardar emparejamientos');
+    } finally {
+      setSavingPairings(false);
     }
   };
 
@@ -270,13 +441,25 @@ export function TournamentSwissView({
               <table className="w-full text-left text-xs">
                 <thead>
                   <tr className="border-b border-slate-800 bg-slate-950/70 text-slate-400 uppercase tracking-wider font-semibold">
-                    <th className="py-3 px-3 text-center w-10">#</th>
+                    <th className="py-3 px-2 text-center w-8">#</th>
                     <th className="py-3 px-3">Jugador</th>
-                    <th className="py-3 px-2 text-center font-extrabold text-amber-400">PTS</th>
-                    <th className="py-3 px-2 text-center">Bo3 (V-D)</th>
-                    <th className="py-3 px-2 text-center">+/- Juegos</th>
-                    <th className="py-3 px-3 text-right pr-4 font-mono text-slate-400" title="Desempate Buchholz (Suma de puntos de rivales)">
-                      Buchholz
+                    <th className="py-3 px-2 text-center font-extrabold text-amber-400" title="Puntos de Match: Victoria 3 pts, Empate 1 pt, Derrota 0 pts">
+                      PTS
+                    </th>
+                    <th className="py-3 px-2 text-center" title="Partidas Bo3: Victorias - Empates - Derrotas">
+                      Bo3
+                    </th>
+                    <th className="py-3 px-2 text-center text-amber-300 font-bold" title="Opponents' Match Win %: Porcentaje de victoria de los rivales enfrentados (mín. 33.33%). Criterio oficial #1 de desempate en Lorcana">
+                      OMW%
+                    </th>
+                    <th className="py-3 px-2 text-center" title="Game Win %: Porcentaje de juegos individuales ganados por el jugador. Criterio oficial #2 de desempate">
+                      GW%
+                    </th>
+                    <th className="py-3 px-2 text-center text-slate-400" title="Opponents' Game Win %: Porcentaje de juegos individuales ganados por los rivales. Criterio oficial #3 de desempate">
+                      OGW%
+                    </th>
+                    <th className="py-3 px-2 text-center" title="Diferencia de juegos individuales ganados vs perdidos">
+                      +/-
                     </th>
                   </tr>
                 </thead>
@@ -291,7 +474,7 @@ export function TournamentSwissView({
                           index === 0 ? 'bg-amber-500/5' : ''
                         }`}
                       >
-                        <td className="py-2.5 px-3 text-center font-mono font-bold">
+                        <td className="py-2.5 px-2 text-center font-mono font-bold">
                           {podiumMedal ? (
                             <span className="text-sm">{podiumMedal}</span>
                           ) : (
@@ -327,8 +510,23 @@ export function TournamentSwissView({
 
                         <td className="py-2.5 px-2 text-center font-mono">
                           <span className="text-emerald-400 font-semibold">{item.matchesWon}V</span>
-                          {' - '}
+                          {item.matchesDrawn > 0 && (
+                            <span className="text-amber-400 font-semibold">-{item.matchesDrawn}E</span>
+                          )}
+                          <span className="text-slate-500">-</span>
                           <span className="text-rose-400 font-semibold">{item.matchesLost}D</span>
+                        </td>
+
+                        <td className="py-2.5 px-2 text-center font-mono font-bold text-amber-300" title={`OMW%: ${item.omwRate}% (Suma Buchholz: ${item.buchholz} pts)`}>
+                          {item.omwRate.toFixed(1)}%
+                        </td>
+
+                        <td className="py-2.5 px-2 text-center font-mono text-slate-300" title={`GW%: ${item.gameWinRate}% (${item.gamesWon} ganados / ${item.gamesWon + item.gamesLost} jugados)`}>
+                          {item.gameWinRate.toFixed(1)}%
+                        </td>
+
+                        <td className="py-2.5 px-2 text-center font-mono text-slate-400" title={`OGW%: ${item.ogwRate}%`}>
+                          {item.ogwRate.toFixed(1)}%
                         </td>
 
                         <td className="py-2.5 px-2 text-center font-mono font-semibold">
@@ -344,10 +542,6 @@ export function TournamentSwissView({
                             {item.gameDiff > 0 ? `+${item.gameDiff}` : item.gameDiff}
                           </span>
                         </td>
-
-                        <td className="py-2.5 px-3 text-right pr-4 font-mono text-slate-300">
-                          {item.buchholz} <span className="text-[10px] text-slate-500">pts</span>
-                        </td>
                       </tr>
                     );
                   })}
@@ -355,37 +549,65 @@ export function TournamentSwissView({
               </table>
             </div>
 
-            <div className="p-3 border-t border-slate-800 bg-slate-950/40 text-[11px] text-slate-400 flex items-center justify-between">
-              <span>Criterios: Puntos (3 por victoria) &gt; Buchholz &gt; Diferencial</span>
-              <span className="font-mono text-amber-400">Formato Suizo</span>
+            <div className="p-3 border-t border-slate-800 bg-slate-950/40 text-[11px] text-slate-400 flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
+              <span>Desempate Oficial Lorcana: <strong>PTS</strong> &gt; <strong>OMW%</strong> &gt; <strong>GW%</strong> &gt; <strong>OGW%</strong> &gt; <strong>+/-</strong></span>
+              <span className="font-mono text-amber-400 font-semibold">Estándar Melee.gg / Ravensburger</span>
             </div>
           </div>
         </div>
 
         {/* Right Column: Rounds & Matchups (5 cols) */}
         <div className="lg:col-span-5 space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-base font-bold text-white flex items-center gap-2">
-              <Swords className="w-4 h-4 text-amber-400" />
-              <span>Enfrentamientos</span>
-            </h3>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-2 border-b border-slate-800/80">
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <Swords className="w-4 h-4 text-amber-400" />
+                <span>Enfrentamientos</span>
+              </h3>
 
-            {/* Round Switcher Pills */}
-            <div className="flex items-center gap-1 bg-slate-900 border border-slate-800 p-1 rounded-xl">
-              {distinctRounds.map((rnd) => (
-                <button
-                  key={rnd}
-                  onClick={() => setSelectedRound(rnd)}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
-                    selectedRound === rnd
-                      ? 'bg-amber-500 text-slate-950 shadow-sm'
-                      : 'text-slate-400 hover:text-white'
-                  }`}
-                >
-                  R{rnd}
-                </button>
-              ))}
+              {/* Round Switcher Pills */}
+              <div className="flex items-center gap-1 bg-slate-900 border border-slate-800 p-1 rounded-xl">
+                {distinctRounds.map((rnd) => (
+                  <button
+                    key={rnd}
+                    onClick={() => setSelectedRound(rnd)}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
+                      selectedRound === rnd
+                        ? 'bg-amber-500 text-slate-950 shadow-sm'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    R{rnd}
+                  </button>
+                ))}
+              </div>
             </div>
+
+            {/* Admin Pairing Actions */}
+            {currentUser?.role === 'admin' && (
+              <div className="flex items-center gap-1.5 self-start sm:self-auto flex-wrap">
+                <button
+                  type="button"
+                  onClick={handleOpenPairingModal}
+                  title={`Editar manualmente los emparejamientos de la Ronda ${selectedRound}`}
+                  className="px-2.5 py-1.5 rounded-xl text-xs font-bold text-amber-300 bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 flex items-center gap-1.5 transition-all shadow-sm"
+                >
+                  <SlidersHorizontal className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Editar Cruces</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleRepairRound(selectedRound)}
+                  disabled={repairing}
+                  title={`Recalcular emparejamientos suizos de la Ronda ${selectedRound} automáticamente`}
+                  className="px-2.5 py-1.5 rounded-xl text-xs font-bold text-slate-300 hover:text-amber-300 bg-slate-900 hover:bg-slate-800 border border-slate-700 hover:border-amber-500/40 flex items-center gap-1.5 transition-all shadow-sm disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${repairing ? 'animate-spin text-amber-400' : 'text-slate-400'}`} />
+                  <span>{repairing ? 'Reemparejando...' : 'Reemparejar'}</span>
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Matches in selected round */}
@@ -710,6 +932,222 @@ export function TournamentSwissView({
           </div>
         </div>
       )}
+
+      {/* --- MODAL: EDIT SWISS PAIRINGS (ADMIN ONLY) --- */}
+      {editingPairingsModal && (() => {
+        const assignedCounts = new Map<string, number>();
+        pairingsDraft.forEach((p) => {
+          if (p.player1Id) assignedCounts.set(p.player1Id, (assignedCounts.get(p.player1Id) || 0) + 1);
+          if (p.player2Id) assignedCounts.set(p.player2Id, (assignedCounts.get(p.player2Id) || 0) + 1);
+        });
+
+        const duplicatePlayerIds = Array.from(assignedCounts.entries())
+          .filter(([_, count]) => count > 1)
+          .map(([id]) => id);
+
+        const unassignedPlayerIds = tournament.playerIds.filter((id) => !assignedCounts.has(id));
+        const hasDuplicates = duplicatePlayerIds.length > 0;
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fade-in">
+            <div className="bg-slate-900 border border-amber-500/40 rounded-3xl max-w-2xl w-full p-6 shadow-2xl relative max-h-[90vh] flex flex-col">
+              <button
+                type="button"
+                onClick={() => setEditingPairingsModal(false)}
+                className="absolute top-4 right-4 text-slate-400 hover:text-white p-1 rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+
+              <div className="mb-4">
+                <div className="flex items-center gap-2">
+                  <SlidersHorizontal className="w-5 h-5 text-amber-400" />
+                  <h3 className="text-lg font-bold text-white">
+                    Modificar Emparejamientos • Ronda {selectedRound}
+                  </h3>
+                </div>
+                <p className="text-xs text-slate-400 mt-1">
+                  Ajusta manualmente qué participantes se enfrentan en cada mesa. Si modificas jugadores de un cruce ya finalizado, su marcador volverá a pendiente.
+                </p>
+              </div>
+
+              {/* Status and Validation Badges */}
+              <div className="mb-4 space-y-2">
+                {pairingsError && (
+                  <div className="p-3 rounded-xl bg-rose-950/40 border border-rose-500/40 text-rose-300 text-xs flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 shrink-0 text-rose-400" />
+                    <span>{pairingsError}</span>
+                  </div>
+                )}
+
+                {hasDuplicates && (
+                  <div className="p-3 rounded-xl bg-rose-950/40 border border-rose-500/40 text-rose-300 text-xs flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 shrink-0 text-rose-400" />
+                    <span>
+                      Jugadores repetidos en más de una mesa:{' '}
+                      <strong>
+                        {duplicatePlayerIds
+                          .map((id) => playerMap.get(id)?.name || id)
+                          .join(', ')}
+                      </strong>
+                    </span>
+                  </div>
+                )}
+
+                {unassignedPlayerIds.length > 0 && (
+                  <div className="p-2.5 rounded-xl bg-amber-950/30 border border-amber-500/30 text-amber-300 text-xs flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 shrink-0 text-amber-400" />
+                    <span>
+                      Jugadores sin mesa asignada:{' '}
+                      <strong>
+                        {unassignedPlayerIds
+                          .map((id) => playerMap.get(id)?.name || id)
+                          .join(', ')}
+                      </strong>
+                    </span>
+                  </div>
+                )}
+
+                {!hasDuplicates && unassignedPlayerIds.length === 0 && (
+                  <div className="p-2.5 rounded-xl bg-emerald-950/30 border border-emerald-500/30 text-emerald-300 text-xs flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
+                    <span>
+                      Todos los participantes ({tournament.playerIds.length}) asignados correctamente.
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* Matchups Draft List */}
+              <div className="flex-1 overflow-y-auto space-y-3 pr-1 max-h-[50vh]">
+                {pairingsDraft.map((pairing, index) => {
+                  return (
+                    <div
+                      key={index}
+                      className="bg-slate-950/70 border border-slate-800 rounded-2xl p-3.5 space-y-2 shadow-sm"
+                    >
+                      <div className="flex items-center justify-between text-xs font-semibold text-slate-400 border-b border-slate-800/60 pb-1.5">
+                        <span className="font-mono text-amber-400/90">
+                          Mesa {index + 1}
+                        </span>
+                        {pairingsDraft.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => removeTableFromDraft(index)}
+                            title="Eliminar esta mesa"
+                            className="text-slate-500 hover:text-rose-400 transition-colors p-1"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-11 items-center gap-2 pt-1">
+                        {/* Player 1 Selection */}
+                        <div className="sm:col-span-5 space-y-1">
+                          <label className="text-[10px] uppercase font-bold text-slate-400 block">
+                            Jugador 1
+                          </label>
+                          <select
+                            value={pairing.player1Id}
+                            onChange={(e) => updateDraftPlayer1(index, e.target.value)}
+                            className="w-full bg-slate-900 border border-slate-700 text-slate-100 text-xs rounded-xl p-2.5 outline-none focus:border-amber-500"
+                          >
+                            {tournament.playerIds.map((pid) => {
+                              const u = playerMap.get(pid);
+                              return (
+                                <option key={pid} value={pid}>
+                                  {u?.name || pid} (@{u?.username || pid})
+                                </option>
+                              );
+                            })}
+                          </select>
+                        </div>
+
+                        {/* Swap Button */}
+                        <div className="sm:col-span-1 flex items-center justify-center pt-4 sm:pt-4">
+                          <button
+                            type="button"
+                            onClick={() => swapMatchPlayers(index)}
+                            title="Intercambiar orden en esta mesa"
+                            className="w-8 h-8 rounded-full bg-slate-900 border border-slate-700 hover:border-amber-400 text-slate-400 hover:text-amber-300 flex items-center justify-center transition-all shadow-sm"
+                          >
+                            <ArrowLeftRight className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+
+                        {/* Player 2 Selection */}
+                        <div className="sm:col-span-5 space-y-1">
+                          <label className="text-[10px] uppercase font-bold text-slate-400 block">
+                            Jugador 2 (Oponente)
+                          </label>
+                          <select
+                            value={pairing.player2Id || '__BYE__'}
+                            onChange={(e) => updateDraftPlayer2(index, e.target.value)}
+                            className="w-full bg-slate-900 border border-slate-700 text-slate-100 text-xs rounded-xl p-2.5 outline-none focus:border-amber-500"
+                          >
+                            <option value="__BYE__">Descanso (BYE - Victoria auto 2-0)</option>
+                            {tournament.playerIds.map((pid) => {
+                              const u = playerMap.get(pid);
+                              return (
+                                <option key={pid} value={pid}>
+                                  {u?.name || pid} (@{u?.username || pid})
+                                </option>
+                              );
+                            })}
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+
+                <div className="pt-1">
+                  <button
+                    type="button"
+                    onClick={addTableToDraft}
+                    className="w-full py-2.5 rounded-xl border border-dashed border-slate-700 hover:border-amber-500/50 text-slate-400 hover:text-amber-300 text-xs font-semibold flex items-center justify-center gap-1.5 transition-all bg-slate-950/40"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Añadir otra Mesa de Juego</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Modal Actions Footer */}
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-4 border-t border-slate-800 mt-4">
+                <button
+                  type="button"
+                  onClick={() => handleRepairRound(selectedRound)}
+                  disabled={repairing}
+                  className="w-full sm:w-auto px-4 py-2 rounded-xl text-xs font-semibold text-slate-300 hover:text-amber-300 bg-slate-800 hover:bg-slate-700 border border-slate-700 flex items-center justify-center gap-1.5 transition-all disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${repairing ? 'animate-spin' : ''}`} />
+                  <span>Reemparejar Automáticamente</span>
+                </button>
+
+                <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setEditingPairingsModal(false)}
+                    className="px-4 py-2 text-xs text-slate-400 hover:text-white"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSavePairings}
+                    disabled={hasDuplicates || savingPairings}
+                    className="px-5 py-2.5 rounded-xl font-bold text-xs text-slate-950 bg-gradient-to-r from-amber-400 to-amber-300 hover:from-amber-300 hover:to-amber-200 shadow-md shadow-amber-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                  >
+                    {savingPairings ? 'Guardando...' : 'Confirmar Emparejamientos'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

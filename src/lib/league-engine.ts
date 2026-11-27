@@ -1,4 +1,5 @@
-import { InkType, Match, PlayerStanding, Round, TournamentMatch, User } from '@/types';
+import { DeckMetaStats, InkType, Match, PlayerStanding, Round, TournamentMatch, User } from '@/types';
+import { LORCANA_INKS } from './constants';
 
 /**
  * Generates a full Round-Robin tournament schedule using the Berger tables / circle method.
@@ -561,4 +562,175 @@ export function calculateMetaStats(
     won: stat.won,
     winRate: stat.played > 0 ? Math.round((stat.won / stat.played) * 100) : 0,
   }));
+}
+
+/**
+ * Calculates Meta statistics for 2-ink and mono-ink Decks / Archetypes,
+ * with explicit breakdown between League matches and Tournament matches.
+ */
+export function calculateDeckMetaStats(
+  matches: Match[],
+  players: User[],
+  tournamentMatches: TournamentMatch[] = []
+): DeckMetaStats[] {
+  const playerMap = new Map<string, User>(players.map((p) => [p.id, p]));
+
+  const deckMap = new Map<
+    string,
+    {
+      id: string;
+      name: string;
+      primaryInk: InkType;
+      secondaryInk?: InkType;
+      totalMatches: number;
+      totalWins: number;
+      totalLosses: number;
+      totalDraws: number;
+      leagueMatches: number;
+      leagueWins: number;
+      leagueLosses: number;
+      tournamentMatches: number;
+      tournamentWins: number;
+      tournamentLosses: number;
+      pilotsMap: Map<string, { id: string; name: string; avatar?: string; matches: number; wins: number }>;
+    }
+  >();
+
+  function registerDeckResult(
+    inks: [InkType, InkType] | InkType[] | null,
+    player: User | undefined,
+    won: boolean,
+    lost: boolean,
+    drawn: boolean,
+    isLeague: boolean
+  ) {
+    if (!inks || inks.length === 0) return;
+    const uniqueInks = Array.from(new Set(inks)).sort() as InkType[];
+    if (uniqueInks.length === 0) return;
+
+    const primary = uniqueInks[0];
+    const secondary = uniqueInks[1];
+    const id = secondary ? `${primary}/${secondary}` : primary;
+    const name = secondary
+      ? `${LORCANA_INKS[primary]?.label || primary} / ${LORCANA_INKS[secondary]?.label || secondary}`
+      : LORCANA_INKS[primary]?.label || primary;
+
+    if (!deckMap.has(id)) {
+      deckMap.set(id, {
+        id,
+        name,
+        primaryInk: primary,
+        secondaryInk: secondary,
+        totalMatches: 0,
+        totalWins: 0,
+        totalLosses: 0,
+        totalDraws: 0,
+        leagueMatches: 0,
+        leagueWins: 0,
+        leagueLosses: 0,
+        tournamentMatches: 0,
+        tournamentWins: 0,
+        tournamentLosses: 0,
+        pilotsMap: new Map(),
+      });
+    }
+
+    const d = deckMap.get(id)!;
+    d.totalMatches += 1;
+    if (won) d.totalWins += 1;
+    if (lost) d.totalLosses += 1;
+    if (drawn) d.totalDraws += 1;
+
+    if (isLeague) {
+      d.leagueMatches += 1;
+      if (won) d.leagueWins += 1;
+      if (lost) d.leagueLosses += 1;
+    } else {
+      d.tournamentMatches += 1;
+      if (won) d.tournamentWins += 1;
+      if (lost) d.tournamentLosses += 1;
+    }
+
+    if (player) {
+      if (!d.pilotsMap.has(player.id)) {
+        d.pilotsMap.set(player.id, {
+          id: player.id,
+          name: player.name,
+          avatar: player.avatar,
+          matches: 0,
+          wins: 0,
+        });
+      }
+      const pilot = d.pilotsMap.get(player.id)!;
+      pilot.matches += 1;
+      if (won) pilot.wins += 1;
+    }
+  }
+
+  // 1. Process Completed League Matches
+  const completedLeague = matches.filter((m) => m.status === 'completed' && m.player2Id);
+  completedLeague.forEach((m) => {
+    const p1 = playerMap.get(m.player1Id);
+    const p2 = m.player2Id ? playerMap.get(m.player2Id) : undefined;
+
+    const p1Inks: [InkType, InkType] | null =
+      m.player1Inks || (p1?.primaryInk && p1?.secondaryInk ? [p1.primaryInk, p1.secondaryInk] : null);
+    const p2Inks: [InkType, InkType] | null =
+      m.player2Inks || (p2?.primaryInk && p2?.secondaryInk ? [p2.primaryInk, p2.secondaryInk] : null);
+
+    const p1Won = m.player1Score > m.player2Score;
+    const p2Won = m.player2Score > m.player1Score;
+    const isDraw = m.player1Score === m.player2Score;
+
+    registerDeckResult(p1Inks, p1, p1Won, p2Won, isDraw, true);
+    registerDeckResult(p2Inks, p2, p2Won, p1Won, isDraw, true);
+  });
+
+  // 2. Process Completed Tournament Matches
+  const completedTournaments = tournamentMatches.filter(
+    (m) => m.status === 'completed' && m.player1Id && m.player2Id
+  );
+  completedTournaments.forEach((m) => {
+    const p1 = playerMap.get(m.player1Id!);
+    const p2 = playerMap.get(m.player2Id!);
+
+    const p1Inks: [InkType, InkType] | null =
+      m.player1Inks || (p1?.primaryInk && p1?.secondaryInk ? [p1.primaryInk, p1.secondaryInk] : null);
+    const p2Inks: [InkType, InkType] | null =
+      m.player2Inks || (p2?.primaryInk && p2?.secondaryInk ? [p2.primaryInk, p2.secondaryInk] : null);
+
+    const p1Won = m.winnerId === m.player1Id || m.player1Score > m.player2Score;
+    const p2Won = m.winnerId === m.player2Id || m.player2Score > m.player1Score;
+
+    registerDeckResult(p1Inks, p1, p1Won, p2Won, false, false);
+    registerDeckResult(p2Inks, p2, p2Won, p1Won, false, false);
+  });
+
+  const totalDeckPlays = Array.from(deckMap.values()).reduce((sum, d) => sum + d.totalMatches, 0);
+
+  const results: DeckMetaStats[] = Array.from(deckMap.values()).map((d) => ({
+    id: d.id,
+    name: d.name,
+    primaryInk: d.primaryInk,
+    secondaryInk: d.secondaryInk,
+    totalMatches: d.totalMatches,
+    totalWins: d.totalWins,
+    totalLosses: d.totalLosses,
+    totalDraws: d.totalDraws,
+    winRate: d.totalMatches > 0 ? Math.round((d.totalWins / d.totalMatches) * 100) : 0,
+    metaShare: totalDeckPlays > 0 ? Math.round((d.totalMatches / totalDeckPlays) * 100) : 0,
+    leagueMatches: d.leagueMatches,
+    leagueWins: d.leagueWins,
+    leagueLosses: d.leagueLosses,
+    tournamentMatches: d.tournamentMatches,
+    tournamentWins: d.tournamentWins,
+    tournamentLosses: d.tournamentLosses,
+    pilots: Array.from(d.pilotsMap.values()).sort((a, b) => b.matches - a.matches),
+  }));
+
+  // Sort by Total Matches Played DESC > Win Rate DESC
+  return results.sort((a, b) => {
+    if (b.totalMatches !== a.totalMatches) return b.totalMatches - a.totalMatches;
+    return b.winRate - a.winRate;
+  });
 }
