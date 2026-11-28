@@ -29,6 +29,10 @@ import {
   Award,
   Palette,
   ChevronRight,
+  Upload,
+  FileJson,
+  FileCheck,
+  AlertTriangle,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { AvatarBadge } from '@/components/AvatarBadge';
@@ -111,6 +115,21 @@ export function AdminClient({
   // Backups state
   const [backups, setBackups] = useState<BackupInfo[]>([]);
   const [loadingBackups, setLoadingBackups] = useState(false);
+  const [uploadedFile, setUploadedFile] = useState<{
+    name: string;
+    sizeBytes: number;
+    data: any;
+    stats: {
+      userCount: number;
+      leagueCount: number;
+      roundCount: number;
+      matchCount: number;
+      tournamentCount: number;
+    };
+  } | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [validatingUpload, setValidatingUpload] = useState(false);
+  const fileInputRef = React.useRef<HTMLInputElement | null>(null);
 
   // Player Edit Modal State
   const [editingPlayer, setEditingPlayer] = useState<User | null>(null);
@@ -391,7 +410,17 @@ const handleSavePlayer = async (e: React.FormEvent) => {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
-      setMessage({ type: 'success', text: `Jugador ${playerForm.name} creado correctamente.` });
+      if (data.user?.id) {
+        setMidSeasonPlayers((prev) => (prev.includes(data.user.id) ? prev : [...prev, data.user.id]));
+      }
+      setMessage({
+        type: 'success',
+        text: `Jugador ${playerForm.name} creado correctamente. ${
+          league?.id
+            ? 'Para programar sus partidos futuros manteniendo intactas las jornadas pasadas, ve a la pestaña "Liga" y pulsa "Regenerar Cruces a Futuro".'
+            : ''
+        }`,
+      });
     } else if (editingPlayer) {
       const res = await fetch('/api/admin/players', {
         method: 'PUT',
@@ -586,7 +615,7 @@ const handleRegenerateFuture = async () => {
   }
 };
 
-// 9. Backups (Create & Restore)
+// 9. Backups (Create, Restore, Upload from PC, Delete)
 const handleCreateBackupNow = async () => {
   setLoading(true);
   try {
@@ -605,7 +634,7 @@ const handleCreateBackupNow = async () => {
 };
 
 const handleRestoreBackup = async (filename?: string) => {
-  if (!confirm('¿Restaurar la base de datos a este backup? Se sobrescribirán los datos actuales.')) return;
+  if (!confirm('¿Restaurar la base de datos a este backup? Se creará una copia de seguridad automática de seguridad antes de aplicar la restauración.')) return;
 
   setLoading(true);
   try {
@@ -619,6 +648,113 @@ const handleRestoreBackup = async (filename?: string) => {
 
     setMessage({ type: 'success', text: 'Base de datos restaurada con éxito desde el backup.' });
     router.refresh();
+  } catch (err: any) {
+    setMessage({ type: 'error', text: err.message });
+  } finally {
+    setLoading(false);
+  }
+};
+
+const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const file = e.target.files?.[0];
+  if (!file) return;
+
+  setUploadError(null);
+  setUploadedFile(null);
+  setValidatingUpload(true);
+
+  const reader = new FileReader();
+  reader.onload = async (event) => {
+    try {
+      const text = event.target?.result as string;
+      let parsed: any;
+      try {
+        parsed = JSON.parse(text);
+      } catch {
+        setUploadError('El archivo seleccionado no es un JSON válido o está dañado.');
+        setValidatingUpload(false);
+        return;
+      }
+
+      // Validate structure via server
+      const res = await fetch('/api/admin/backup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'validate', backupData: parsed }),
+      });
+      const result = await res.json();
+
+      if (!res.ok || !result.success) {
+        setUploadError(result.error || 'El archivo JSON no tiene una estructura compatible con CCREW Lorcana.');
+      } else {
+        setUploadedFile({
+          name: file.name,
+          sizeBytes: file.size,
+          data: parsed,
+          stats: result.stats,
+        });
+      }
+    } catch (err: any) {
+      setUploadError('Error al procesar el archivo: ' + (err.message || 'Error desconocido'));
+    } finally {
+      setValidatingUpload(false);
+    }
+  };
+  reader.onerror = () => {
+    setUploadError('No se pudo leer el archivo seleccionado desde tu ordenador.');
+    setValidatingUpload(false);
+  };
+  reader.readAsText(file);
+};
+
+const handleRestoreUploadedData = async () => {
+  if (!uploadedFile) return;
+  if (
+    !confirm(
+      `¿Confirmar restauración de la base de datos con el archivo "${uploadedFile.name}"? Se sobrescribirá la información actual tras crear un snapshot de seguridad automático.`
+    )
+  ) {
+    return;
+  }
+
+  setLoading(true);
+  try {
+    const res = await fetch('/api/admin/backup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'upload_restore',
+        backupData: uploadedFile.data,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+
+    setMessage({ type: 'success', text: data.message });
+    setUploadedFile(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+    fetchBackups();
+    router.refresh();
+  } catch (err: any) {
+    setMessage({ type: 'error', text: err.message });
+  } finally {
+    setLoading(false);
+  }
+};
+
+const handleDeleteBackup = async (filename: string) => {
+  if (!confirm(`¿Estás seguro de que deseas eliminar permanentemente el backup "${filename}"?`)) return;
+
+  setLoading(true);
+  try {
+    const res = await fetch(`/api/admin/backup?filename=${encodeURIComponent(filename)}`, {
+      method: 'DELETE',
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+
+    setMessage({ type: 'success', text: 'Copia de seguridad eliminada con éxito.' });
+    fetchBackups();
   } catch (err: any) {
     setMessage({ type: 'error', text: err.message });
   } finally {
@@ -954,63 +1090,95 @@ return (
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-          {players.map((p) => (
-            <div
-              key={p.id}
-              className="bg-slate-900/60 border border-slate-800 rounded-2xl p-4 flex items-center justify-between hover:border-amber-500/30 transition-all"
-            >
-              <div className="flex items-center gap-3 min-w-0">
-                <AvatarBadge avatarId={p.avatar} name={p.name} size="md" />
-                <div className="min-w-0 flex-1">
-                  <p className="font-bold text-slate-200 text-sm truncate">{p.name}</p>
-                  <p className="text-xs text-slate-500 truncate">@{p.username}</p>
-                  <div className="mt-1 flex items-center gap-1.5 flex-wrap">
-                    <DualInkBadge primary={p.primaryInk} secondary={p.secondaryInk} size="sm" isOwnerOrAdmin={true} />
-                    <span className="text-[10px] text-slate-400 font-mono">
-                      {p.inksVisibility === 'private' ? '🔒 Oculto' : '🌐 Público'}
-                    </span>
+          {players.map((p) => {
+            const isEnrolledInLeague = (league?.playerIds || []).includes(p.id);
+            return (
+              <div
+                key={p.id}
+                className="bg-slate-900/60 border border-slate-800 rounded-2xl p-4 flex items-center justify-between hover:border-amber-500/30 transition-all"
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <AvatarBadge avatarId={p.avatar} name={p.name} size="md" />
+                  <div className="min-w-0 flex-1">
+                    <p className="font-bold text-slate-200 text-sm truncate">{p.name}</p>
+                    <p className="text-xs text-slate-500 truncate">@{p.username}</p>
+                    <div className="mt-1 flex items-center gap-1.5 flex-wrap">
+                      <DualInkBadge primary={p.primaryInk} secondary={p.secondaryInk} size="sm" isOwnerOrAdmin={true} />
+                      <span className="text-[10px] text-slate-400 font-mono">
+                        {p.inksVisibility === 'private' ? '🔒 Oculto' : '🌐 Público'}
+                      </span>
+                    </div>
+                    {league && (
+                      <div className="mt-1.5 flex items-center gap-1.5 flex-wrap">
+                        {isEnrolledInLeague ? (
+                          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1">
+                            <Check className="w-3 h-3" />
+                            <span>En Liga Activa</span>
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (!midSeasonPlayers.includes(p.id)) {
+                                setMidSeasonPlayers((prev) => [...prev, p.id]);
+                              }
+                              setActiveTab('league');
+                              setMessage({
+                                type: 'success',
+                                text: `Has seleccionado a ${p.name}. Pulsa en "Regenerar Cruces a Futuro" para programar sus jornadas pendientes sin tocar las ya jugadas.`,
+                              });
+                            }}
+                            className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-amber-500/15 text-amber-300 border border-amber-500/30 hover:bg-amber-500/25 transition-colors flex items-center gap-1"
+                            title="Incorporar este jugador a las jornadas futuras de la liga"
+                          >
+                            <UserPlus className="w-3 h-3" />
+                            <span>+ Inscribir en Liga Futura</span>
+                          </button>
+                        )}
+                      </div>
+                    )}
+                    {p.favoriteCard && (
+                      <p className="text-[10px] text-amber-400/90 truncate mt-0.5">
+                        ✨ {p.favoriteCard}
+                      </p>
+                    )}
                   </div>
-                  {p.favoriteCard && (
-                    <p className="text-[10px] text-amber-400/90 truncate mt-0.5">
-                      ✨ {p.favoriteCard}
-                    </p>
-                  )}
+                </div>
+
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => {
+                      setEditingPlayer(p);
+                      setIsCreatingPlayer(false);
+                      setPlayerForm({
+                        name: p.name,
+                        username: p.username,
+                        password: '',
+                        avatar: p.avatar || 'mickey',
+                        primaryInk: p.primaryInk || 'Amber',
+                        secondaryInk: p.secondaryInk || 'Steel',
+                        inksVisibility: p.inksVisibility || 'public',
+                        favoriteCard: p.favoriteCard || '',
+                        bio: p.bio || '',
+                      });
+                    }}
+                    className="p-2 rounded-lg text-slate-400 hover:text-amber-300 hover:bg-slate-800 transition-colors"
+                    title="Editar información del jugador"
+                  >
+                    <Edit className="w-4 h-4" />
+                  </button>
+
+                  <button
+                    onClick={() => handleDeletePlayer(p)}
+                    className="p-2 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+                    title="Eliminar jugador"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
                 </div>
               </div>
-
-              <div className="flex items-center gap-1">
-                <button
-                  onClick={() => {
-                    setEditingPlayer(p);
-                    setIsCreatingPlayer(false);
-                    setPlayerForm({
-                      name: p.name,
-                      username: p.username,
-                      password: '',
-                      avatar: p.avatar || 'mickey',
-                      primaryInk: p.primaryInk || 'Amber',
-                      secondaryInk: p.secondaryInk || 'Steel',
-                      inksVisibility: p.inksVisibility || 'public',
-                      favoriteCard: p.favoriteCard || '',
-                      bio: p.bio || '',
-                    });
-                  }}
-                  className="p-2 rounded-lg text-slate-400 hover:text-amber-300 hover:bg-slate-800 transition-colors"
-                  title="Editar información del jugador"
-                >
-                  <Edit className="w-4 h-4" />
-                </button>
-
-                <button
-                  onClick={() => handleDeletePlayer(p)}
-                  className="p-2 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
-                  title="Eliminar jugador"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     )}
@@ -1670,6 +1838,7 @@ return (
     {/* --- TAB 4: BACKUPS Y RESTAURACIÓN --- */}
     {activeTab === 'backups' && (
       <div className="space-y-6">
+        {/* Header & Main Actions */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <h2 className="text-lg font-bold text-white flex items-center gap-2">
@@ -1677,18 +1846,18 @@ return (
               <span>Copias de Seguridad (Backups JSON)</span>
             </h2>
             <p className="text-xs text-slate-400 mt-0.5">
-              Los backups se actualizan automáticamente al cerrar cada jornada semanal. También puedes forzar una copia manual o descargarla.
+              Descarga la base de datos completa en JSON, crea snapshots manuales o restaura archivos desde tu ordenador con validación garantizada.
             </p>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <button
               onClick={handleCreateBackupNow}
               disabled={loading}
               className="px-4 py-2 rounded-xl text-xs font-bold text-slate-950 bg-amber-400 hover:bg-amber-300 transition-colors shadow-sm flex items-center gap-1.5"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-              <span>Actualizar Backup Ahora</span>
+              <span>Crear Snapshot Ahora</span>
             </button>
 
             <a
@@ -1696,44 +1865,212 @@ return (
               download
               className="px-4 py-2 rounded-xl text-xs font-bold text-slate-200 bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors flex items-center gap-1.5"
             >
-              <Download className="w-3.5 h-3.5" />
-              <span>Descargar JSON</span>
+              <Download className="w-3.5 h-3.5 text-amber-400" />
+              <span>Descargar Base de Datos (.json)</span>
             </a>
           </div>
         </div>
 
-        <div className="bg-slate-900/60 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
-          {loadingBackups ? (
-            <div className="p-8 text-center text-xs text-slate-400">Cargando lista de backups...</div>
-          ) : backups.length === 0 ? (
-            <div className="p-8 text-center text-xs text-slate-400">
-              Aún no hay backups generados. Pulsa en "Actualizar Backup Ahora" para guardar el primer punto de restauración.
+        {/* Upload & Restore from PC Card */}
+        <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-4">
+          <div className="flex items-start justify-between flex-wrap gap-3">
+            <div>
+              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                <Upload className="w-4 h-4 text-amber-400" />
+                <span>Cargar y Restaurar Backup desde tu PC</span>
+              </h3>
+              <p className="text-xs text-slate-400 mt-0.5 max-w-2xl">
+                Selecciona un archivo <code>.json</code> guardado en tu equipo. El sistema comprobará y validará que la estructura de jugadores, ligas, jornadas y partidos sea íntegra antes de ofrecerte la opción de recuperar toda la información.
+              </p>
             </div>
-          ) : (
-            <div className="divide-y divide-slate-800/80">
-              {backups.map((b) => (
-                <div key={b.filename} className="p-4 flex items-center justify-between flex-wrap gap-3 hover:bg-slate-950/40">
-                  <div>
-                    <p className="font-bold text-white text-sm">{b.label}</p>
-                    <p className="text-[11px] text-slate-400 font-mono mt-0.5">
-                      {new Date(b.createdAt).toLocaleString()} • {(b.sizeBytes / 1024).toFixed(1)} KB
-                    </p>
-                  </div>
 
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => handleRestoreBackup(b.filename)}
-                      disabled={loading}
-                      className="px-3 py-1.5 rounded-lg text-xs font-bold text-amber-300 bg-amber-500/10 border border-amber-500/30 hover:bg-amber-500/20 transition-colors flex items-center gap-1.5"
-                    >
-                      <RotateCcw className="w-3.5 h-3.5" />
-                      <span>Restaurar Este Backup</span>
-                    </button>
-                  </div>
-                </div>
-              ))}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".json,application/json"
+              onChange={handleFileSelect}
+              className="hidden"
+              id="backup-file-upload"
+            />
+
+            <label
+              htmlFor="backup-file-upload"
+              className="cursor-pointer px-4 py-2 rounded-xl text-xs font-bold text-slate-100 bg-slate-800 hover:bg-slate-700 border border-amber-500/30 hover:border-amber-500/60 transition-all flex items-center gap-2 shadow-sm"
+            >
+              <FileJson className="w-4 h-4 text-amber-400" />
+              <span>Seleccionar Archivo JSON de tu PC</span>
+            </label>
+          </div>
+
+          {/* Validating indicator */}
+          {validatingUpload && (
+            <div className="p-4 rounded-xl bg-slate-950/60 border border-slate-800 text-xs text-slate-400 flex items-center gap-2">
+              <RefreshCw className="w-4 h-4 animate-spin text-amber-400" />
+              <span>Comprobando y validando integridad del archivo JSON...</span>
             </div>
           )}
+
+          {/* Error Message if Invalid */}
+          {uploadError && (
+            <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-start gap-2.5">
+              <AlertTriangle className="w-4 h-4 shrink-0 text-rose-400 mt-0.5" />
+              <div>
+                <p className="font-bold text-rose-200">Error en el archivo seleccionado</p>
+                <p className="mt-0.5 text-rose-300/90">{uploadError}</p>
+              </div>
+            </div>
+          )}
+
+          {/* Validated Backup Preview Card */}
+          {uploadedFile && (
+            <div className="p-4 sm:p-5 rounded-xl bg-slate-950/80 border border-emerald-500/40 shadow-lg space-y-4 animate-fade-in">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 rounded-lg bg-emerald-500/20 text-emerald-400">
+                    <FileCheck className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-white text-sm">{uploadedFile.name}</span>
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                        ✓ Archivo Válido
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-400 font-mono">
+                      {(uploadedFile.sizeBytes / 1024).toFixed(1)} KB
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setUploadedFile(null);
+                      setUploadError(null);
+                      if (fileInputRef.current) fileInputRef.current.value = '';
+                    }}
+                    className="px-3 py-1.5 rounded-lg text-xs text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+                  >
+                    Descartar
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleRestoreUploadedData}
+                    disabled={loading}
+                    className="px-4 py-2 rounded-xl text-xs font-bold text-slate-950 bg-emerald-400 hover:bg-emerald-300 transition-all shadow-md shadow-emerald-500/20 flex items-center gap-1.5"
+                  >
+                    <RotateCcw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+                    <span>Recuperar y Restaurar Información</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Data Summary Grid */}
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 pt-2 border-t border-slate-800 text-xs">
+                <div className="bg-slate-900/70 p-2.5 rounded-lg border border-slate-800 text-center">
+                  <p className="text-slate-400 text-[10px] uppercase font-bold">Jugadores</p>
+                  <p className="text-base font-extrabold text-white mt-0.5">{uploadedFile.stats.userCount}</p>
+                </div>
+                <div className="bg-slate-900/70 p-2.5 rounded-lg border border-slate-800 text-center">
+                  <p className="text-slate-400 text-[10px] uppercase font-bold">Ligas</p>
+                  <p className="text-base font-extrabold text-amber-400 mt-0.5">{uploadedFile.stats.leagueCount}</p>
+                </div>
+                <div className="bg-slate-900/70 p-2.5 rounded-lg border border-slate-800 text-center">
+                  <p className="text-slate-400 text-[10px] uppercase font-bold">Jornadas</p>
+                  <p className="text-base font-extrabold text-sky-400 mt-0.5">{uploadedFile.stats.roundCount}</p>
+                </div>
+                <div className="bg-slate-900/70 p-2.5 rounded-lg border border-slate-800 text-center">
+                  <p className="text-slate-400 text-[10px] uppercase font-bold">Partidos</p>
+                  <p className="text-base font-extrabold text-purple-400 mt-0.5">{uploadedFile.stats.matchCount}</p>
+                </div>
+                <div className="bg-slate-900/70 p-2.5 rounded-lg border border-slate-800 text-center">
+                  <p className="text-slate-400 text-[10px] uppercase font-bold">Torneos</p>
+                  <p className="text-base font-extrabold text-emerald-400 mt-0.5">{uploadedFile.stats.tournamentCount}</p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 text-[11px] text-slate-400 bg-slate-900/50 p-2 rounded-lg border border-slate-800">
+                <Shield className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                <span>
+                  <strong>Tranquilidad garantizada:</strong> Antes de sobreescribir, el servidor creará automáticamente una copia de seguridad del estado actual por si necesitas dar marcha atrás.
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Existing Server Snapshots List */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-bold text-white flex items-center gap-2">
+              <Calendar className="w-4 h-4 text-amber-400" />
+              <span>Historial de Puntos de Restauración en Servidor</span>
+            </h3>
+            <span className="text-xs text-slate-400 font-mono">
+              {backups.length} {backups.length === 1 ? 'copia' : 'copias'} disponibles
+            </span>
+          </div>
+
+          <div className="bg-slate-900/60 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
+            {loadingBackups ? (
+              <div className="p-8 text-center text-xs text-slate-400 flex items-center justify-center gap-2">
+                <RefreshCw className="w-4 h-4 animate-spin text-amber-400" />
+                <span>Cargando lista de backups...</span>
+              </div>
+            ) : backups.length === 0 ? (
+              <div className="p-8 text-center text-xs text-slate-400">
+                Aún no hay backups generados en el servidor. Pulsa en "Crear Snapshot Ahora" para guardar el primer punto de restauración.
+              </div>
+            ) : (
+              <div className="divide-y divide-slate-800/80">
+                {backups.map((b) => (
+                  <div key={b.filename} className="p-4 flex items-center justify-between flex-wrap gap-3 hover:bg-slate-950/40 transition-colors">
+                    <div>
+                      <p className="font-bold text-white text-sm flex items-center gap-2">
+                        <span>{b.label}</span>
+                      </p>
+                      <p className="text-[11px] text-slate-400 font-mono mt-0.5">
+                        {new Date(b.createdAt).toLocaleString()} • {(b.sizeBytes / 1024).toFixed(1)} KB • <span className="text-slate-500">{b.filename}</span>
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <a
+                        href={`/api/admin/backup?download=true&filename=${encodeURIComponent(b.filename)}`}
+                        download={b.filename}
+                        className="px-2.5 py-1.5 rounded-lg text-xs font-semibold text-slate-300 bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors flex items-center gap-1.5"
+                        title="Descargar este archivo JSON a tu PC"
+                      >
+                        <Download className="w-3.5 h-3.5 text-amber-400" />
+                        <span>Bajar</span>
+                      </a>
+
+                      <button
+                        onClick={() => handleRestoreBackup(b.filename)}
+                        disabled={loading}
+                        className="px-3 py-1.5 rounded-lg text-xs font-bold text-amber-300 bg-amber-500/10 border border-amber-500/30 hover:bg-amber-500/20 transition-colors flex items-center gap-1.5"
+                        title="Restaurar la base de datos a este punto"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5" />
+                        <span>Restaurar</span>
+                      </button>
+
+                      <button
+                        onClick={() => handleDeleteBackup(b.filename)}
+                        disabled={loading}
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+                        title="Eliminar este archivo de backup"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     )}

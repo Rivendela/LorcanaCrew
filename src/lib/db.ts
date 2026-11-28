@@ -620,6 +620,8 @@ export async function restoreBackup(filename?: string): Promise<boolean> {
     const dataToRestore: DatabaseSchema = parsed.data || parsed;
 
     if (dataToRestore.users && Array.isArray(dataToRestore.users)) {
+      // Auto safety backup before overwriting
+      await createBackup('Pre-Restauración Archivo');
       await saveDatabase(dataToRestore);
       return true;
     }
@@ -628,4 +630,121 @@ export async function restoreBackup(filename?: string): Promise<boolean> {
     console.error('Error restoring backup:', err);
     return false;
   }
+}
+
+export function validateDatabaseSchema(rawInput: any): {
+  valid: boolean;
+  error?: string;
+  normalizedData?: DatabaseSchema;
+  stats?: {
+    userCount: number;
+    leagueCount: number;
+    roundCount: number;
+    matchCount: number;
+    tournamentCount: number;
+  };
+} {
+  if (!rawInput || typeof rawInput !== 'object') {
+    return { valid: false, error: 'El archivo JSON no contiene un objeto válido.' };
+  }
+
+  // Support both raw DatabaseSchema and wrapped { metadata, data } backup structures
+  const candidate = (rawInput.data && typeof rawInput.data === 'object' && Array.isArray(rawInput.data.users))
+    ? rawInput.data
+    : rawInput;
+
+  if (!Array.isArray(candidate.users)) {
+    return { valid: false, error: 'Estructura inválida: Falta la lista de usuarios ("users").' };
+  }
+
+  if (candidate.users.length === 0) {
+    return { valid: false, error: 'Estructura inválida: La lista de usuarios está vacía.' };
+  }
+
+  const hasAdmin = candidate.users.some((u: any) => u && (u.role === 'admin' || u.username === 'admin'));
+  if (!hasAdmin) {
+    return { valid: false, error: 'El archivo debe contener al menos un usuario administrador ("role": "admin").' };
+  }
+
+  for (const u of candidate.users) {
+    if (!u || typeof u !== 'object' || !u.id || !u.username || !u.name) {
+      return { valid: false, error: 'Uno o más usuarios tienen un formato inválido (se requieren id, username y name).' };
+    }
+  }
+
+  if (!Array.isArray(candidate.leagues)) {
+    return { valid: false, error: 'Estructura inválida: Falta la lista de ligas ("leagues").' };
+  }
+
+  if (!Array.isArray(candidate.rounds)) {
+    return { valid: false, error: 'Estructura inválida: Falta la lista de jornadas ("rounds").' };
+  }
+
+  if (!Array.isArray(candidate.matches)) {
+    return { valid: false, error: 'Estructura inválida: Falta la lista de partidos ("matches").' };
+  }
+
+  const tournaments = Array.isArray(candidate.tournaments) ? candidate.tournaments : [];
+
+  const normalizedData: DatabaseSchema = {
+    users: candidate.users,
+    leagues: candidate.leagues,
+    rounds: candidate.rounds,
+    matches: candidate.matches,
+    tournaments,
+  };
+
+  return {
+    valid: true,
+    normalizedData,
+    stats: {
+      userCount: normalizedData.users.length,
+      leagueCount: normalizedData.leagues.length,
+      roundCount: normalizedData.rounds.length,
+      matchCount: normalizedData.matches.length,
+      tournamentCount: (normalizedData.tournaments || []).length,
+    },
+  };
+}
+
+export async function restoreUploadedBackup(data: any): Promise<{ success: boolean; stats: any }> {
+  const validation = validateDatabaseSchema(data);
+  if (!validation.valid || !validation.normalizedData) {
+    throw new Error(validation.error || 'Datos de base de datos no válidos.');
+  }
+
+  // Create an automatic safety snapshot of current data before overwriting
+  await createBackup('Pre-Restauración Subida PC');
+
+  // Persist the restored normalized database
+  await saveDatabase(validation.normalizedData);
+
+  return { success: true, stats: validation.stats };
+}
+
+export async function getBackupFile(filename: string): Promise<{ filename: string; content: string } | null> {
+  ensureDirectoryExists();
+  const safeFilename = path.basename(filename);
+  const targetFile = path.join(BACKUP_DIR, safeFilename);
+
+  if (!fs.existsSync(targetFile)) {
+    return null;
+  }
+
+  const content = await fs.promises.readFile(targetFile, 'utf-8');
+  return { filename: safeFilename, content };
+}
+
+export async function deleteBackup(filename: string): Promise<boolean> {
+  ensureDirectoryExists();
+  const safeFilename = path.basename(filename);
+  if (safeFilename === 'backup_latest.json' || !safeFilename.startsWith('backup_') || !safeFilename.endsWith('.json')) {
+    return false;
+  }
+  const targetFile = path.join(BACKUP_DIR, safeFilename);
+  if (fs.existsSync(targetFile)) {
+    await fs.promises.unlink(targetFile);
+    return true;
+  }
+  return false;
 }
